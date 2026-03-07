@@ -1,28 +1,151 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import ttk, messagebox
 import pyodbc
 
 # Conexión a SQL Server
 def conectar():
     return pyodbc.connect(
         'DRIVER={ODBC Driver 18 for SQL Server};'
-        'SERVER=DESKTOP-PG4PTAU\\SQLEXPRESS;' 
-                      # Cambia si tu servidor tiene otro nombre
-        'DATABASE=taller;'         # Tu base de datos
+        'SERVER=DESKTOP-PG4PTAU\\SQLEXPRESS;'
+        'DATABASE=taller;'
         'Trusted_Connection=yes;'
         'Encrypt=no;'
-        'TrustServerCertificate=yes;'    # Si usas autenticación de Windows
+        'TrustServerCertificate=yes;'
     )
-    # Si usas usuario/contraseña:
-    # 'UID=tu_usuario;PWD=tu_contraseña;'
 
-# Función de login
+# Guardar Cliente
+def guardar_cliente(name, lastname, cellphone):
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO Customers (Name, LastName, Cellphone) VALUES (?,?,?)",
+        (name, lastname, cellphone)
+    )
+    conn.commit()
+    conn.close()
+    messagebox.showinfo("Éxito", "Cliente registrado correctamente")
+
+# Guardar Auto
+def guardar_auto(make, model, year, color, vin, customer):
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO Carts (Make, Model, ModelYear, Color, VIN, Id_Customer) VALUES (?,?,?,?,?,?)",
+        (make, model, year, color, vin, customer)
+    )
+    conn.commit()
+    conn.close()
+    messagebox.showinfo("Éxito", "Auto registrado correctamente")
+
+# Guardar Servicio
+def guardar_servicio(part, duration, price, worker, mileage, cart):
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO Services (ReplacedPart, Duration, Price, Worker, Mileage, Id_Cart) VALUES (?,?,?,?,?,?)",
+        (part, duration, price, worker, mileage, cart)
+    )
+    conn.commit()
+    conn.close()
+    messagebox.showinfo("Éxito", "Servicio registrado correctamente")
+
+# Menú principal con pestañas y estilo
+def abrir_menu_principal():
+    ventana_menu = tk.Tk()
+    ventana_menu.title("Menú Taller")
+    ventana_menu.geometry("500x400")
+
+    # --- Estilo moderno ---
+    style = ttk.Style()
+    style.theme_use("clam")  # Puedes probar "alt", "default", "clam"
+    style.configure("TNotebook", background="#f0f0f0")
+    style.configure("TNotebook.Tab", padding=[10, 5], font=("Arial", 10, "bold"))
+    style.configure("TButton", font=("Arial", 10), padding=6)
+    style.configure("TLabel", font=("Arial", 10))
+
+    notebook = ttk.Notebook(ventana_menu)
+    notebook.pack(expand=True, fill="both")
+
+    # --- Pestaña Cliente ---
+    frame_cliente = ttk.Frame(notebook)
+    notebook.add(frame_cliente, text="Registrar Cliente")
+
+    ttk.Label(frame_cliente, text="Name").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+    entry_name = ttk.Entry(frame_cliente); entry_name.grid(row=0, column=1)
+
+    ttk.Label(frame_cliente, text="LastName").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+    entry_lastname = ttk.Entry(frame_cliente); entry_lastname.grid(row=1, column=1)
+
+    ttk.Label(frame_cliente, text="Cellphone").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+    entry_cellphone = ttk.Entry(frame_cliente); entry_cellphone.grid(row=2, column=1)
+
+    ttk.Button(frame_cliente, text="Guardar Cliente",
+               command=lambda: guardar_cliente(entry_name.get(), entry_lastname.get(), entry_cellphone.get())
+               ).grid(row=3, columnspan=2, pady=10)
+
+    # --- Pestaña Auto ---
+    frame_auto = ttk.Frame(notebook)
+    notebook.add(frame_auto, text="Registrar Auto")
+
+    ttk.Label(frame_auto, text="Make").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+    entry_make = ttk.Entry(frame_auto); entry_make.grid(row=0, column=1)
+
+    ttk.Label(frame_auto, text="Model").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+    entry_model = ttk.Entry(frame_auto); entry_model.grid(row=1, column=1)
+
+    ttk.Label(frame_auto, text="ModelYear").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+    entry_year = ttk.Entry(frame_auto); entry_year.grid(row=2, column=1)
+
+    ttk.Label(frame_auto, text="Color").grid(row=3, column=0, padx=5, pady=5, sticky="w")
+    entry_color = ttk.Entry(frame_auto); entry_color.grid(row=3, column=1)
+
+    ttk.Label(frame_auto, text="VIN").grid(row=4, column=0, padx=5, pady=5, sticky="w")
+    entry_vin = ttk.Entry(frame_auto); entry_vin.grid(row=4, column=1)
+
+    ttk.Label(frame_auto, text="Id_Customer").grid(row=5, column=0, padx=5, pady=5, sticky="w")
+    entry_customer = ttk.Entry(frame_auto); entry_customer.grid(row=5, column=1)
+
+    ttk.Button(frame_auto, text="Guardar Auto",
+               command=lambda: guardar_auto(entry_make.get(), entry_model.get(), entry_year.get(),
+                                            entry_color.get(), entry_vin.get(), entry_customer.get())
+               ).grid(row=6, columnspan=2, pady=10)
+
+    # --- Pestaña Servicio ---
+    frame_servicio = ttk.Frame(notebook)
+    notebook.add(frame_servicio, text="Registrar Servicio")
+
+    ttk.Label(frame_servicio, text="ReplacedPart").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+    entry_part = ttk.Entry(frame_servicio); entry_part.grid(row=0, column=1)
+
+    ttk.Label(frame_servicio, text="Duration").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+    entry_duration = ttk.Entry(frame_servicio); entry_duration.grid(row=1, column=1)
+
+    ttk.Label(frame_servicio, text="Price").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+    entry_price = ttk.Entry(frame_servicio); entry_price.grid(row=2, column=1)
+
+    ttk.Label(frame_servicio, text="Worker").grid(row=3, column=0, padx=5, pady=5, sticky="w")
+    entry_worker = ttk.Entry(frame_servicio); entry_worker.grid(row=3, column=1)
+
+    ttk.Label(frame_servicio, text="Mileage").grid(row=4, column=0, padx=5, pady=5, sticky="w")
+    entry_mileage = ttk.Entry(frame_servicio); entry_mileage.grid(row=4, column=1)
+
+    ttk.Label(frame_servicio, text="Id_Cart").grid(row=5, column=0, padx=5, pady=5, sticky="w")
+    entry_cart = ttk.Entry(frame_servicio); entry_cart.grid(row=5, column=1)
+
+    ttk.Button(frame_servicio, text="Guardar Servicio",
+               command=lambda: guardar_servicio(entry_part.get(), entry_duration.get(), entry_price.get(),
+                                                entry_worker.get(), entry_mileage.get(), entry_cart.get())
+               ).grid(row=6, columnspan=2, pady=10)
+
+    ventana_menu.mainloop()
+
+# Ventana de login
 def login():
     usuario = entry_usuario.get()
     contraseña = entry_contraseña.get()
     conn = conectar()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM Users WHERE Name=? AND Password=?", (usuario, contraseña))
+    cursor.execute("SELECT * FROM Users WHERE Username=? AND Password=?", (usuario, contraseña))
     resultado = cursor.fetchone()
     if resultado:
         messagebox.showinfo("Login", f"Bienvenido {usuario}")
@@ -32,131 +155,18 @@ def login():
         messagebox.showerror("Error", "Usuario o contraseña incorrectos")
     conn.close()
 
-# Menú principal
-def abrir_menu_principal():
-    ventana_menu = tk.Tk()
-    ventana_menu.title("Menú Taller")
-
-    tk.Button(ventana_menu, text="Registrar Cliente", command=registrar_customer).pack(pady=10)
-    tk.Button(ventana_menu, text="Registrar Auto", command=registrar_auto).pack(pady=10)
-    tk.Button(ventana_menu, text="Registrar Servicio", command=registrar_servicio).pack(pady=10)
-
-    ventana_menu.mainloop()
-
-# Formulario para registrar clientes
-def registrar_customer():
-    ventana_customer = tk.Toplevel()
-    ventana_customer.title("Registrar Cliente")
-
-    tk.Label(ventana_customer, text="Name").pack()
-    name = tk.Entry(ventana_customer); name.pack()
-
-    tk.Label(ventana_customer, text="LastName").pack()
-    lastname = tk.Entry(ventana_customer); lastname.pack()
-
-    tk.Label(ventana_customer, text="Cellphone").pack()
-    cellphone = tk.Entry(ventana_customer); cellphone.pack()
-
-    def guardar_customer():
-        conn = conectar()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO Customers (Name, LastName, Cellphone) VALUES (?,?,?)",
-            (name.get(), lastname.get(), cellphone.get())
-        )
-        conn.commit()
-        conn.close()
-        messagebox.showinfo("Éxito", "Cliente registrado correctamente")
-        ventana_customer.destroy()
-
-    tk.Button(ventana_customer, text="Guardar", command=guardar_customer).pack(pady=10)
-
-# Formulario para registrar autos
-def registrar_auto():
-    ventana_auto = tk.Toplevel()
-    ventana_auto.title("Registrar Auto")
-
-    tk.Label(ventana_auto, text="Make").pack()
-    make = tk.Entry(ventana_auto); make.pack()
-
-    tk.Label(ventana_auto, text="Model").pack()
-    model = tk.Entry(ventana_auto); model.pack()
-
-    tk.Label(ventana_auto, text="ModelYear").pack()
-    year = tk.Entry(ventana_auto); year.pack()
-
-    tk.Label(ventana_auto, text="Color").pack()
-    color = tk.Entry(ventana_auto); color.pack()
-
-    tk.Label(ventana_auto, text="VIN").pack()
-    vin = tk.Entry(ventana_auto); vin.pack()
-
-    tk.Label(ventana_auto, text="Id_Customer").pack()
-    customer = tk.Entry(ventana_auto); customer.pack()
-
-    def guardar_auto():
-        conn = conectar()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO Carts (Make, Model, ModelYear, Color, VIN, Id_Customer) VALUES (?,?,?,?,?,?)",
-            (make.get(), model.get(), year.get(), color.get(), vin.get(), customer.get())
-        )
-        conn.commit()
-        conn.close()
-        messagebox.showinfo("Éxito", "Auto registrado correctamente")
-        ventana_auto.destroy()
-
-    tk.Button(ventana_auto, text="Guardar", command=guardar_auto).pack(pady=10)
-
-# Formulario para registrar servicios
-def registrar_servicio():
-    ventana_servicio = tk.Toplevel()
-    ventana_servicio.title("Registrar Servicio")
-
-    tk.Label(ventana_servicio, text="ReplacedPart").pack()
-    part = tk.Entry(ventana_servicio); part.pack()
-
-    tk.Label(ventana_servicio, text="Duration").pack()
-    duration = tk.Entry(ventana_servicio); duration.pack()
-
-    tk.Label(ventana_servicio, text="Price").pack()
-    price = tk.Entry(ventana_servicio); price.pack()
-
-    tk.Label(ventana_servicio, text="Worker").pack()
-    worker = tk.Entry(ventana_servicio); worker.pack()
-
-    tk.Label(ventana_servicio, text="Mileage").pack()
-    mileage = tk.Entry(ventana_servicio); mileage.pack()
-
-    tk.Label(ventana_servicio, text="Id_Cart").pack()
-    cart = tk.Entry(ventana_servicio); cart.pack()
-
-    def guardar_servicio():
-        conn = conectar()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO Services (ReplacedPart, Duration, Price, Worker, Mileage, Id_Cart) VALUES (?,?,?,?,?,?)",
-            (part.get(), duration.get(), price.get(), worker.get(), mileage.get(), cart.get())
-        )
-        conn.commit()
-        conn.close()
-        messagebox.showinfo("Éxito", "Servicio registrado correctamente")
-        ventana_servicio.destroy()
-
-    tk.Button(ventana_servicio, text="Guardar", command=guardar_servicio).pack(pady=10)
-
-# Ventana de login
 ventana_login = tk.Tk()
 ventana_login.title("Login Taller")
+ventana_login.geometry("300x150")
 
-tk.Label(ventana_login, text="Usuario").pack()
-entry_usuario = tk.Entry(ventana_login)
+ttk.Label(ventana_login, text="Usuario").pack(pady=5)
+entry_usuario = ttk.Entry(ventana_login)
 entry_usuario.pack()
 
-tk.Label(ventana_login, text="Contraseña").pack()
-entry_contraseña = tk.Entry(ventana_login, show="*")
+ttk.Label(ventana_login, text="Contraseña").pack(pady=5)
+entry_contraseña = ttk.Entry(ventana_login, show="*")
 entry_contraseña.pack()
 
-tk.Button(ventana_login, text="Ingresar", command=login).pack(pady=10)
+ttk.Button(ventana_login, text="Ingresar", command=login).pack(pady=10)
 
 ventana_login.mainloop()
