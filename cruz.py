@@ -1,6 +1,9 @@
 import customtkinter as ctk
 import pyodbc
 from tkinter import messagebox
+from tkinter import ttk 
+import os
+from PIL import Image 
 
 # --- CONFIGURACIÓN DEL TEMA ---
 ctk.set_appearance_mode("light") 
@@ -13,27 +16,18 @@ COLOR_GRIS_CLARO = "#f0f0f0"
 COLOR_GRIS_BORDE = "#dcdcdc"
 COLOR_VERDE_PRINCIPAL = "#2ecc71"
 COLOR_VERDE_HOVER = "#27ae60"
+COLOR_ROJO = "#e74c3c"
+COLOR_ROJO_HOVER = "#c0392b"
+COLOR_AZUL = "#3498db"
+COLOR_AZUL_HOVER = "#2980b9"
+COLOR_GRIS_OSCURO = "#7f8c8d"
+COLOR_PLACA_TITULO = "#2c3e50" 
 
-ENTRY_STYLE = {
-    "fg_color": COLOR_BLANCO,
-    "text_color": COLOR_NEGRO,
-    "border_color": COLOR_GRIS_BORDE,
-    "border_width": 1,
-    "placeholder_text_color": "gray"
-}
+ENTRY_STYLE = {"fg_color": COLOR_BLANCO, "text_color": COLOR_NEGRO, "border_color": COLOR_GRIS_BORDE, "border_width": 1}
+LABEL_STYLE = {"font": ("Arial", 12, "bold"), "text_color": "#666666"}
 
-BUTTON_STYLE = {
-    "fg_color": COLOR_VERDE_PRINCIPAL,
-    "hover_color": COLOR_VERDE_HOVER,
-    "text_color": COLOR_BLANCO,
-    "font": ("Arial", 14, "bold") 
-}
-
-LABEL_STYLE = {
-    "font": ("Arial", 12, "bold"),
-    "text_color": "#666666" # Un gris oscuro para las etiquetas
-}
-# ------------------------------------
+# Lista global para el buscador de clientes
+lista_clientes_combo = []
 
 # Conexión a SQL Server
 def conectar():
@@ -46,212 +40,434 @@ def conectar():
         'TrustServerCertificate=yes;'
     )
 
-def guardar_cliente(name, lastname, cellphone):
-    try:
-        conn = conectar()
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO Customers (Name, LastName, Cellphone, InsertedDate) VALUES (?,?,?, GETDATE())",
-                       (name, lastname, cellphone))
-        conn.commit()
-        conn.close()
-        messagebox.showinfo("Éxito", "Cliente registrado correctamente")
-    except Exception as e:
-        messagebox.showerror("Error de Base de Datos", str(e))
+def configurar_estilo_tablas():
+    style = ttk.Style()
+    style.theme_use("default")
+    style.configure("Treeview", background=COLOR_BLANCO, foreground=COLOR_NEGRO, rowheight=25, fieldbackground=COLOR_BLANCO, bordercolor=COLOR_GRIS_BORDE, borderwidth=1)
+    style.map('Treeview', background=[('selected', COLOR_VERDE_PRINCIPAL)], foreground=[('selected', COLOR_BLANCO)])
+    style.configure("Treeview.Heading", background=COLOR_GRIS_CLARO, foreground=COLOR_NEGRO, relief="flat", font=("Arial", 10, "bold"))
+    style.map("Treeview.Heading", background=[('active', COLOR_GRIS_BORDE)])
 
-def guardar_auto(make, model, year, color, customer):
+# ==========================================
+# FUNCIONES PARA EL BUSCADOR DE CLIENTES
+# ==========================================
+def actualizar_clientes_combo():
+    """Consulta la base de datos y actualiza la lista de clientes disponibles"""
+    global lista_clientes_combo
+    lista_clientes_combo.clear()
     try:
-        conn = conectar()
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO Carts (Make, Model, ModelYear, Color, Id_Customer) VALUES (?,?,?,?,?)",
-                       (make, model, year, color, customer))
-        conn.commit()
+        conn = conectar(); cursor = conn.cursor()
+        cursor.execute("SELECT Id_Customer, Name, LastName FROM Customers")
+        for row in cursor.fetchall():
+            # Formato: "1 - Juan Perez"
+            lista_clientes_combo.append(f"{row[0]} - {row[1]} {row[2]}")
         conn.close()
-        messagebox.showinfo("Éxito", "Auto registrado correctamente")
+        if 'combo_customer' in globals():
+            combo_customer.configure(values=lista_clientes_combo)
     except Exception as e:
-        messagebox.showerror("Error de Base de Datos", str(e))
+        print("Error al actualizar buscador de clientes:", e)
 
-def guardar_servicio(id_service, part, duration, price, worker, vin_referencia):
+def filtrar_clientes(event):
+    """Filtra las opciones del combobox basándose en lo que el usuario escribe"""
+    # Ignoramos teclas de navegación
+    if event.keysym in ('Up', 'Down', 'Left', 'Right', 'Return'):
+        return
+    
+    texto_busqueda = combo_customer.get().lower()
+    if texto_busqueda == "":
+        combo_customer.configure(values=lista_clientes_combo)
+    else:
+        filtrados = [c for c in lista_clientes_combo if texto_busqueda in c.lower()]
+        combo_customer.configure(values=filtrados)
+
+# ==========================================
+# FUNCIONES CRUD: CLIENTES
+# ==========================================
+def cargar_clientes():
+    for row in tree_clientes.get_children(): tree_clientes.delete(row)
     try:
-        conn = conectar()
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO Services (Id_Service, ReplacedPart, Duration, Price, Worker, VIN) VALUES (?,?,?,?,?,?)",
-                       (id_service, part, duration, price, worker, vin_referencia))
-        conn.commit()
+        conn = conectar(); cursor = conn.cursor()
+        cursor.execute("SELECT Id_Customer, Name, LastName, Cellphone FROM Customers")
+        for row in cursor.fetchall(): 
+            valores_limpios = [str(val) if val is not None else "" for val in row]
+            tree_clientes.insert("", "end", values=valores_limpios)
         conn.close()
-        messagebox.showinfo("Éxito", "Servicio registrado correctamente")
+    except Exception as e: messagebox.showerror("Error", str(e))
+
+def limpiar_cliente():
+    entry_name.delete(0, 'end'); entry_lastname.delete(0, 'end'); entry_cellphone.delete(0, 'end')
+    if tree_clientes.selection(): tree_clientes.selection_remove(tree_clientes.selection())
+
+def seleccionar_cliente(event):
+    seleccion = tree_clientes.focus()
+    if seleccion:
+        valores = tree_clientes.item(seleccion, 'values')
+        limpiar_cliente()
+        entry_name.insert(0, valores[1]); entry_lastname.insert(0, valores[2]); entry_cellphone.insert(0, valores[3])
+
+def guardar_cliente():
+    try:
+        conn = conectar(); cursor = conn.cursor()
+        cursor.execute("INSERT INTO Customers (Name, LastName, Cellphone, InsertedDate) VALUES (?,?,?, GETDATE())", (entry_name.get(), entry_lastname.get(), entry_cellphone.get()))
+        conn.commit(); conn.close()
+        messagebox.showinfo("Éxito", "Cliente guardado"); limpiar_cliente(); cargar_clientes()
+        actualizar_clientes_combo() # Actualizamos el buscador de autos
+    except Exception as e: messagebox.showerror("Error", str(e))
+
+def editar_cliente():
+    seleccion = tree_clientes.focus()
+    if not seleccion: return messagebox.showwarning("Advertencia", "Seleccione un cliente de la tabla")
+    id_cliente = int(str(tree_clientes.item(seleccion, 'values')[0]).replace(',', ''))
+    try:
+        conn = conectar(); cursor = conn.cursor()
+        cursor.execute("UPDATE Customers SET Name=?, LastName=?, Cellphone=? WHERE Id_Customer=?", (entry_name.get(), entry_lastname.get(), entry_cellphone.get(), id_cliente))
+        conn.commit(); conn.close()
+        messagebox.showinfo("Éxito", "Cliente actualizado"); limpiar_cliente(); cargar_clientes()
+        actualizar_clientes_combo() # Actualizamos el buscador de autos
+    except Exception as e: messagebox.showerror("Error", str(e))
+
+def eliminar_cliente():
+    seleccion = tree_clientes.focus()
+    if not seleccion: return messagebox.showwarning("Advertencia", "Seleccione un cliente de la tabla")
+    id_cliente = int(str(tree_clientes.item(seleccion, 'values')[0]).replace(',', ''))
+    if messagebox.askyesno("Confirmar", "¿Seguro que desea eliminar este cliente?"):
+        try:
+            conn = conectar(); cursor = conn.cursor()
+            cursor.execute("DELETE FROM Customers WHERE Id_Customer=?", (id_cliente,))
+            conn.commit(); conn.close()
+            messagebox.showinfo("Éxito", "Cliente eliminado"); limpiar_cliente(); cargar_clientes()
+            actualizar_clientes_combo() # Actualizamos el buscador de autos
+        except pyodbc.IntegrityError: messagebox.showerror("Error de Integridad", "No se puede eliminar el cliente porque tiene autos registrados.")
+        except Exception as e: messagebox.showerror("Error", str(e))
+
+# ==========================================
+# FUNCIONES CRUD: AUTOS
+# ==========================================
+def cargar_autos():
+    for row in tree_autos.get_children(): tree_autos.delete(row)
+    try:
+        conn = conectar(); cursor = conn.cursor()
+        cursor.execute("SELECT VIN, Make, Model, ModelYear, Color, Id_Customer FROM Carts")
+        for row in cursor.fetchall(): 
+            valores_limpios = [str(val) if val is not None else "" for val in row]
+            tree_autos.insert("", "end", values=valores_limpios)
+        conn.close()
+    except Exception as e: messagebox.showerror("Error", str(e))
+
+def limpiar_auto():
+    entry_make.delete(0, 'end'); entry_model.delete(0, 'end'); entry_year.delete(0, 'end'); entry_color.delete(0, 'end')
+    combo_customer.set("") # Limpiamos el buscador
+    if tree_autos.selection(): tree_autos.selection_remove(tree_autos.selection())
+
+def seleccionar_auto(event):
+    seleccion = tree_autos.focus()
+    if seleccion:
+        valores = tree_autos.item(seleccion, 'values')
+        limpiar_auto()
+        entry_make.insert(0, valores[1]); entry_model.insert(0, valores[2]); entry_year.insert(0, valores[3]); entry_color.insert(0, valores[4])
+        
+        # Buscar el cliente en la lista para mostrarlo en el combobox
+        id_cliente_buscado = str(valores[5]).replace(',', '')
+        for cliente in lista_clientes_combo:
+            if cliente.startswith(id_cliente_buscado + " -"):
+                combo_customer.set(cliente)
+                break
+
+def guardar_auto():
+    try:
+        # Extraemos solo el ID (el número antes del " - ")
+        seleccion_combo = combo_customer.get()
+        if not seleccion_combo or " - " not in seleccion_combo:
+            return messagebox.showwarning("Advertencia", "Por favor seleccione un cliente válido de la lista.")
+        
+        id_cliente = int(seleccion_combo.split(" - ")[0])
+        
+        conn = conectar(); cursor = conn.cursor()
+        cursor.execute("INSERT INTO Carts (Make, Model, ModelYear, Color, Id_Customer) VALUES (?,?,?,?,?)", (entry_make.get(), entry_model.get(), entry_year.get(), entry_color.get(), id_cliente))
+        conn.commit(); conn.close()
+        limpiar_auto(); cargar_autos()
+    except Exception as e: messagebox.showerror("Error", str(e))
+
+def editar_auto():
+    seleccion = tree_autos.focus()
+    if not seleccion: return messagebox.showwarning("Advertencia", "Seleccione un auto de la tabla")
+    vin = int(str(tree_autos.item(seleccion, 'values')[0]).replace(',', ''))
+    try:
+        seleccion_combo = combo_customer.get()
+        if not seleccion_combo or " - " not in seleccion_combo:
+            return messagebox.showwarning("Advertencia", "Por favor seleccione un cliente válido de la lista.")
+            
+        id_cliente = int(seleccion_combo.split(" - ")[0])
+        
+        conn = conectar(); cursor = conn.cursor()
+        cursor.execute("UPDATE Carts SET Make=?, Model=?, ModelYear=?, Color=?, Id_Customer=? WHERE VIN=?", (entry_make.get(), entry_model.get(), entry_year.get(), entry_color.get(), id_cliente, vin))
+        conn.commit(); conn.close()
+        limpiar_auto(); cargar_autos()
+    except Exception as e: messagebox.showerror("Error", str(e))
+
+def eliminar_auto():
+    seleccion = tree_autos.focus()
+    if not seleccion: return messagebox.showwarning("Advertencia", "Seleccione un auto de la tabla")
+    vin = int(str(tree_autos.item(seleccion, 'values')[0]).replace(',', ''))
+    if messagebox.askyesno("Confirmar", "¿Seguro que desea eliminar este auto?"):
+        try:
+            conn = conectar(); cursor = conn.cursor()
+            cursor.execute("DELETE FROM Carts WHERE VIN=?", (vin,))
+            conn.commit(); conn.close()
+            limpiar_auto(); cargar_autos()
+        except pyodbc.IntegrityError: messagebox.showerror("Error", "No se puede eliminar porque tiene servicios registrados.")
+        except Exception as e: messagebox.showerror("Error", str(e))
+
+# ==========================================
+# FUNCIONES CRUD: SERVICIOS
+# ==========================================
+def cargar_servicios():
+    for row in tree_servicios.get_children(): tree_servicios.delete(row)
+    try:
+        conn = conectar(); cursor = conn.cursor()
+        cursor.execute("SELECT Id_Service, ReplacedPart, Duration, Price, Worker, VIN FROM Services")
+        for row in cursor.fetchall(): 
+            valores_limpios = [str(val) if val is not None else "" for val in row]
+            tree_servicios.insert("", "end", values=valores_limpios)
+        conn.close()
+    except Exception as e: messagebox.showerror("Error", str(e))
+
+def limpiar_servicio():
+    entry_part.delete(0, 'end'); entry_duration.delete(0, 'end'); entry_price.delete(0, 'end'); entry_worker.delete(0, 'end'); entry_vin_servicio.delete(0, 'end')
+    if tree_servicios.selection(): tree_servicios.selection_remove(tree_servicios.selection())
+
+def seleccionar_servicio(event):
+    seleccion = tree_servicios.focus()
+    if seleccion:
+        valores = tree_servicios.item(seleccion, 'values')
+        limpiar_servicio()
+        # valores[0] es ID, saltamos ese porque ya no hay entry para el ID
+        entry_part.insert(0, valores[1]); entry_duration.insert(0, valores[2]); entry_price.insert(0, valores[3]); entry_worker.insert(0, valores[4]); entry_vin_servicio.insert(0, valores[5])
+
+def guardar_servicio():
+    try:
+        vin_auto = int(str(entry_vin_servicio.get()).replace(',', ''))
+        conn = conectar(); cursor = conn.cursor()
+        # NOTA: Ya no enviamos Id_Service en el INSERT. SQL Server lo autogenerará.
+        cursor.execute("INSERT INTO Services (ReplacedPart, Duration, Price, Worker, VIN) VALUES (?,?,?,?,?)", (entry_part.get(), entry_duration.get(), entry_price.get(), entry_worker.get(), vin_auto))
+        conn.commit(); conn.close()
+        limpiar_servicio(); cargar_servicios()
+    except ValueError: messagebox.showerror("Error", "El campo VIN Auto debe ser numérico.")
+    except Exception as e: messagebox.showerror("Error", str(e))
+
+def editar_servicio():
+    seleccion = tree_servicios.focus()
+    if not seleccion: return messagebox.showwarning("Advertencia", "Seleccione un servicio de la tabla")
+    id_antiguo = int(str(tree_servicios.item(seleccion, 'values')[0]).replace(',', ''))
+    try:
+        vin_auto = int(str(entry_vin_servicio.get()).replace(',', ''))
+        conn = conectar(); cursor = conn.cursor()
+        cursor.execute("UPDATE Services SET ReplacedPart=?, Duration=?, Price=?, Worker=?, VIN=? WHERE Id_Service=?", (entry_part.get(), entry_duration.get(), entry_price.get(), entry_worker.get(), vin_auto, id_antiguo))
+        conn.commit(); conn.close()
+        limpiar_servicio(); cargar_servicios()
+    except ValueError: messagebox.showerror("Error", "El campo VIN Auto debe ser numérico.")
+    except Exception as e: messagebox.showerror("Error", str(e))
+
+def eliminar_servicio():
+    seleccion = tree_servicios.focus()
+    if not seleccion: return messagebox.showwarning("Advertencia", "Seleccione un servicio de la tabla")
+    id_service = int(str(tree_servicios.item(seleccion, 'values')[0]).replace(',', ''))
+    if messagebox.askyesno("Confirmar", "¿Seguro que desea eliminar este servicio?"):
+        try:
+            conn = conectar(); cursor = conn.cursor()
+            cursor.execute("DELETE FROM Services WHERE Id_Service=?", (id_service,))
+            conn.commit(); conn.close()
+            limpiar_servicio(); cargar_servicios()
+        except Exception as e: messagebox.showerror("Error", str(e))
+
+# --- Función para crear la imagen de fondo de manera segura ---
+def establecer_fondo(ventana):
+    try:
+        imagen_pillow = Image.open("fondo.webp")
+        imagen_fondo_ctk = ctk.CTkImage(light_image=imagen_pillow, dark_image=imagen_pillow, size=(1920, 1080))
+        label_fondo = ctk.CTkLabel(ventana, text="", image=imagen_fondo_ctk)
+        label_fondo.place(x=0, y=0, relwidth=1, relheight=1)
     except Exception as e:
-        messagebox.showerror("Error de Base de Datos", str(e))
+        pass # Ignoramos si no encuentra la imagen para no bloquear el programa
 
 # --- Menú principal ---
 def abrir_menu_principal():
+    global entry_name, entry_lastname, entry_cellphone, tree_clientes
+    global entry_make, entry_model, entry_year, entry_color, combo_customer, tree_autos
+    global entry_part, entry_duration, entry_price, entry_worker, entry_vin_servicio, tree_servicios
+
     ventana_menu = ctk.CTk()
     ventana_menu.title("Menú Taller")
-    ventana_menu.geometry("800x650") # Ajustado para que el grid respire
-    ventana_menu.configure(fg_color=COLOR_GRIS_CLARO)
+    ventana_menu.geometry("1100x700") 
+    configurar_estilo_tablas()
+    establecer_fondo(ventana_menu)
 
-    # Título con ícono
-    titulo = ctk.CTkLabel(ventana_menu, text="🔧 Gestión del Taller", font=("Arial", 28, "bold"), text_color=COLOR_NEGRO)
-    titulo.pack(pady=(40, 20))
+    titulo = ctk.CTkLabel(ventana_menu, text="🔧 Gestión del Taller", font=("Arial", 28, "bold"), text_color=COLOR_BLANCO, fg_color=COLOR_PLACA_TITULO, corner_radius=15, padx=30, pady=10)
+    titulo.pack(pady=(20, 10))
 
-    tabview = ctk.CTkTabview(
-        ventana_menu,
-        fg_color=COLOR_BLANCO, 
-        segmented_button_fg_color=COLOR_GRIS_CLARO, 
-        segmented_button_selected_color=COLOR_VERDE_PRINCIPAL, 
-        segmented_button_selected_hover_color=COLOR_VERDE_HOVER, 
-        segmented_button_unselected_color=COLOR_GRIS_CLARO, 
-        segmented_button_unselected_hover_color="#e0e0e0", 
-        text_color=COLOR_NEGRO, 
-        corner_radius=12,
-        border_width=1,
-        border_color=COLOR_GRIS_BORDE,
-        height=480
-    )
-    tabview.pack(expand=True, fill="both", padx=50, pady=(0, 40))
-
-    fuente_pestanas = ctk.CTkFont(family="Arial", size=18, weight="bold")
-    tabview._segmented_button.configure(font=fuente_pestanas)
+    tabview = ctk.CTkTabview(ventana_menu, fg_color=COLOR_BLANCO, bg_color="transparent", segmented_button_selected_color=COLOR_VERDE_PRINCIPAL, segmented_button_selected_hover_color=COLOR_VERDE_HOVER, text_color=COLOR_NEGRO, corner_radius=12)
+    tabview.pack(expand=True, fill="both", padx=30, pady=(0, 30))
+    tabview._segmented_button.configure(font=ctk.CTkFont(family="Arial", size=16, weight="bold"))
 
     # ==========================================
-    # PESTAÑA 1: REGISTRAR CLIENTE (1 Columna)
+    # PESTAÑA CLIENTES
     # ==========================================
     tab_cliente = tabview.add("Registrar Cliente")
-    
-    # Usamos un Frame transparente para centrar todo el formulario
-    frame_cliente = ctk.CTkFrame(tab_cliente, fg_color="transparent")
-    frame_cliente.pack(pady=20, expand=True)
+    tab_cliente.grid_columnconfigure(0, weight=1); tab_cliente.grid_columnconfigure(1, weight=2)
+    tab_cliente.grid_rowconfigure(0, weight=1)
 
-    ctk.CTkLabel(frame_cliente, text="Nombre", **LABEL_STYLE).pack(anchor="w", padx=5)
-    entry_name = ctk.CTkEntry(frame_cliente, width=400, **ENTRY_STYLE)
-    entry_name.pack(pady=(0, 15))
+    frame_form_cli = ctk.CTkFrame(tab_cliente, fg_color="transparent")
+    frame_form_cli.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
 
-    ctk.CTkLabel(frame_cliente, text="Apellido", **LABEL_STYLE).pack(anchor="w", padx=5)
-    entry_lastname = ctk.CTkEntry(frame_cliente, width=400, **ENTRY_STYLE)
-    entry_lastname.pack(pady=(0, 15))
+    ctk.CTkLabel(frame_form_cli, text="Nombre", **LABEL_STYLE).pack(anchor="w")
+    entry_name = ctk.CTkEntry(frame_form_cli, width=300, **ENTRY_STYLE); entry_name.pack(pady=(0, 10))
+    ctk.CTkLabel(frame_form_cli, text="Apellido", **LABEL_STYLE).pack(anchor="w")
+    entry_lastname = ctk.CTkEntry(frame_form_cli, width=300, **ENTRY_STYLE); entry_lastname.pack(pady=(0, 10))
+    ctk.CTkLabel(frame_form_cli, text="Teléfono", **LABEL_STYLE).pack(anchor="w")
+    entry_cellphone = ctk.CTkEntry(frame_form_cli, width=300, **ENTRY_STYLE); entry_cellphone.pack(pady=(0, 20))
 
-    ctk.CTkLabel(frame_cliente, text="Teléfono", **LABEL_STYLE).pack(anchor="w", padx=5)
-    entry_cellphone = ctk.CTkEntry(frame_cliente, width=400, **ENTRY_STYLE)
-    entry_cellphone.pack(pady=(0, 20))
+    frame_btn_cli = ctk.CTkFrame(frame_form_cli, fg_color="transparent")
+    frame_btn_cli.pack(fill="x")
+    ctk.CTkButton(frame_btn_cli, text="Guardar", command=guardar_cliente, fg_color=COLOR_VERDE_PRINCIPAL, width=145).grid(row=0, column=0, padx=(0,5), pady=5)
+    ctk.CTkButton(frame_btn_cli, text="Editar", command=editar_cliente, fg_color=COLOR_AZUL, width=145).grid(row=0, column=1, padx=(5,0), pady=5)
+    ctk.CTkButton(frame_btn_cli, text="Eliminar", command=eliminar_cliente, fg_color=COLOR_ROJO, width=145).grid(row=1, column=0, padx=(0,5), pady=5)
+    ctk.CTkButton(frame_btn_cli, text="Cancelar", command=limpiar_cliente, fg_color=COLOR_GRIS_OSCURO, width=145).grid(row=1, column=1, padx=(5,0), pady=5)
 
-    ctk.CTkButton(frame_cliente, text="Guardar Cliente", width=400, height=45, **BUTTON_STYLE,
-                  command=lambda: guardar_cliente(entry_name.get(), entry_lastname.get(), entry_cellphone.get())
-                  ).pack(pady=10)
+    frame_tabla_cli = ctk.CTkFrame(tab_cliente)
+    frame_tabla_cli.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
+    scroll_cli = ttk.Scrollbar(frame_tabla_cli)
+    scroll_cli.pack(side="right", fill="y")
+    tree_clientes = ttk.Treeview(frame_tabla_cli, columns=("ID", "Nombre", "Apellido", "Teléfono"), show="headings", yscrollcommand=scroll_cli.set)
+    tree_clientes.heading("ID", text="ID"); tree_clientes.column("ID", width=50)
+    tree_clientes.heading("Nombre", text="Nombre")
+    tree_clientes.heading("Apellido", text="Apellido")
+    tree_clientes.heading("Teléfono", text="Teléfono")
+    tree_clientes.pack(expand=True, fill="both")
+    scroll_cli.config(command=tree_clientes.yview)
+    tree_clientes.bind("<ButtonRelease-1>", seleccionar_cliente) 
 
     # ==========================================
-    # PESTAÑA 2: REGISTRAR AUTO (2 Columnas)
+    # PESTAÑA AUTOS
     # ==========================================
     tab_auto = tabview.add("Registrar Auto")
+    tab_auto.grid_columnconfigure(0, weight=1); tab_auto.grid_columnconfigure(1, weight=2)
+    tab_auto.grid_rowconfigure(0, weight=1)
+
+    frame_form_auto = ctk.CTkFrame(tab_auto, fg_color="transparent")
+    frame_form_auto.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+
+    ctk.CTkLabel(frame_form_auto, text="Marca", **LABEL_STYLE).pack(anchor="w")
+    entry_make = ctk.CTkEntry(frame_form_auto, width=300, **ENTRY_STYLE); entry_make.pack(pady=(0, 5))
+    ctk.CTkLabel(frame_form_auto, text="Modelo", **LABEL_STYLE).pack(anchor="w")
+    entry_model = ctk.CTkEntry(frame_form_auto, width=300, **ENTRY_STYLE); entry_model.pack(pady=(0, 5))
+    ctk.CTkLabel(frame_form_auto, text="Año", **LABEL_STYLE).pack(anchor="w")
+    entry_year = ctk.CTkEntry(frame_form_auto, width=300, **ENTRY_STYLE); entry_year.pack(pady=(0, 5))
+    ctk.CTkLabel(frame_form_auto, text="Color", **LABEL_STYLE).pack(anchor="w")
+    entry_color = ctk.CTkEntry(frame_form_auto, width=300, **ENTRY_STYLE); entry_color.pack(pady=(0, 5))
     
-    frame_auto = ctk.CTkFrame(tab_auto, fg_color="transparent")
-    frame_auto.pack(pady=30, expand=True)
+    # --- CAMBIO: BUSCADOR DE CLIENTES ---
+    ctk.CTkLabel(frame_form_auto, text="Cliente (Buscar y Seleccionar)", **LABEL_STYLE).pack(anchor="w")
+    combo_customer = ctk.CTkComboBox(frame_form_auto, width=300, fg_color=COLOR_BLANCO, text_color=COLOR_NEGRO, border_color=COLOR_GRIS_BORDE, button_color=COLOR_VERDE_PRINCIPAL)
+    combo_customer.set("") # Inicia el campo vacio
+    combo_customer.pack(pady=(0, 15))
+    combo_customer.bind("<KeyRelease>", filtrar_clientes) # Activa el filtrado al escribir
 
-    # Fila 1: Marca y Modelo
-    ctk.CTkLabel(frame_auto, text="Marca", **LABEL_STYLE).grid(row=0, column=0, sticky="w", padx=15)
-    ctk.CTkLabel(frame_auto, text="Modelo", **LABEL_STYLE).grid(row=0, column=1, sticky="w", padx=15)
-    entry_make = ctk.CTkEntry(frame_auto, width=220, **ENTRY_STYLE)
-    entry_make.grid(row=1, column=0, padx=15, pady=(0, 15))
-    entry_model = ctk.CTkEntry(frame_auto, width=220, **ENTRY_STYLE)
-    entry_model.grid(row=1, column=1, padx=15, pady=(0, 15))
+    frame_btn_auto = ctk.CTkFrame(frame_form_auto, fg_color="transparent")
+    frame_btn_auto.pack(fill="x")
+    ctk.CTkButton(frame_btn_auto, text="Guardar", command=guardar_auto, fg_color=COLOR_VERDE_PRINCIPAL, width=145).grid(row=0, column=0, padx=(0,5), pady=5)
+    ctk.CTkButton(frame_btn_auto, text="Editar", command=editar_auto, fg_color=COLOR_AZUL, width=145).grid(row=0, column=1, padx=(5,0), pady=5)
+    ctk.CTkButton(frame_btn_auto, text="Eliminar", command=eliminar_auto, fg_color=COLOR_ROJO, width=145).grid(row=1, column=0, padx=(0,5), pady=5)
+    ctk.CTkButton(frame_btn_auto, text="Cancelar", command=limpiar_auto, fg_color=COLOR_GRIS_OSCURO, width=145).grid(row=1, column=1, padx=(5,0), pady=5)
 
-    # Fila 2: Año y Color
-    ctk.CTkLabel(frame_auto, text="Año", **LABEL_STYLE).grid(row=2, column=0, sticky="w", padx=15)
-    ctk.CTkLabel(frame_auto, text="Color", **LABEL_STYLE).grid(row=2, column=1, sticky="w", padx=15)
-    entry_year = ctk.CTkEntry(frame_auto, width=220, **ENTRY_STYLE)
-    entry_year.grid(row=3, column=0, padx=15, pady=(0, 15))
-    entry_color = ctk.CTkEntry(frame_auto, width=220, **ENTRY_STYLE)
-    entry_color.grid(row=3, column=1, padx=15, pady=(0, 15))
-
-    # Fila 3: ID Cliente (Centrado ocupando 2 columnas o solo en la izquierda)
-    ctk.CTkLabel(frame_auto, text="ID Cliente (Número)", **LABEL_STYLE).grid(row=4, column=0, sticky="w", padx=15)
-    entry_customer = ctk.CTkEntry(frame_auto, width=220, **ENTRY_STYLE)
-    entry_customer.grid(row=5, column=0, padx=15, pady=(0, 20), sticky="w")
-
-    # Fila 4: Botón
-    ctk.CTkButton(frame_auto, text="Guardar Auto", width=470, height=45, **BUTTON_STYLE,
-                  command=lambda: guardar_auto(entry_make.get(), entry_model.get(), entry_year.get(),
-                                               entry_color.get(), entry_customer.get())
-                  ).grid(row=6, column=0, columnspan=2, pady=10)
-
+    frame_tabla_auto = ctk.CTkFrame(tab_auto)
+    frame_tabla_auto.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
+    scroll_auto = ttk.Scrollbar(frame_tabla_auto)
+    scroll_auto.pack(side="right", fill="y")
+    tree_autos = ttk.Treeview(frame_tabla_auto, columns=("VIN", "Marca", "Modelo", "Año", "Color", "ID_Cliente"), show="headings", yscrollcommand=scroll_auto.set)
+    for col in ("VIN", "Marca", "Modelo", "Año", "Color", "ID_Cliente"):
+        tree_autos.heading(col, text=col)
+        tree_autos.column(col, width=80 if col in ("VIN", "Año", "ID_Cliente") else 100)
+    tree_autos.pack(expand=True, fill="both")
+    scroll_auto.config(command=tree_autos.yview)
+    tree_autos.bind("<ButtonRelease-1>", seleccionar_auto)
 
     # ==========================================
-    # PESTAÑA 3: REGISTRAR SERVICIO (2 Columnas)
+    # PESTAÑA SERVICIOS
     # ==========================================
     tab_servicio = tabview.add("Registrar Servicio")
+    tab_servicio.grid_columnconfigure(0, weight=1); tab_servicio.grid_columnconfigure(1, weight=2)
+    tab_servicio.grid_rowconfigure(0, weight=1)
 
-    frame_servicio = ctk.CTkFrame(tab_servicio, fg_color="transparent")
-    frame_servicio.pack(pady=20, expand=True)
+    frame_form_serv = ctk.CTkFrame(tab_servicio, fg_color="transparent")
+    frame_form_serv.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
 
-    # Fila 1: ID Servicio y Repuesto
-    ctk.CTkLabel(frame_servicio, text="ID Servicio (Número)", **LABEL_STYLE).grid(row=0, column=0, sticky="w", padx=15)
-    ctk.CTkLabel(frame_servicio, text="Repuesto a cambiar", **LABEL_STYLE).grid(row=0, column=1, sticky="w", padx=15)
-    entry_id_service = ctk.CTkEntry(frame_servicio, width=220, **ENTRY_STYLE)
-    entry_id_service.grid(row=1, column=0, padx=15, pady=(0, 15))
-    entry_part = ctk.CTkEntry(frame_servicio, width=220, **ENTRY_STYLE)
-    entry_part.grid(row=1, column=1, padx=15, pady=(0, 15))
+    # --- CAMBIO: SE ELIMINÓ EL ENTRY DE ID_SERVICE ---
+    ctk.CTkLabel(frame_form_serv, text="Repuesto", **LABEL_STYLE).pack(anchor="w")
+    entry_part = ctk.CTkEntry(frame_form_serv, width=300, **ENTRY_STYLE); entry_part.pack(pady=(0, 5))
+    ctk.CTkLabel(frame_form_serv, text="Duración", **LABEL_STYLE).pack(anchor="w")
+    entry_duration = ctk.CTkEntry(frame_form_serv, width=300, **ENTRY_STYLE); entry_duration.pack(pady=(0, 5))
+    ctk.CTkLabel(frame_form_serv, text="Precio", **LABEL_STYLE).pack(anchor="w")
+    entry_price = ctk.CTkEntry(frame_form_serv, width=300, **ENTRY_STYLE); entry_price.pack(pady=(0, 5))
+    ctk.CTkLabel(frame_form_serv, text="Mecánico", **LABEL_STYLE).pack(anchor="w")
+    entry_worker = ctk.CTkEntry(frame_form_serv, width=300, **ENTRY_STYLE); entry_worker.pack(pady=(0, 5))
+    ctk.CTkLabel(frame_form_serv, text="VIN Auto", **LABEL_STYLE).pack(anchor="w")
+    entry_vin_servicio = ctk.CTkEntry(frame_form_serv, width=300, **ENTRY_STYLE); entry_vin_servicio.pack(pady=(0, 15))
 
-    # Fila 2: Duración y Precio
-    ctk.CTkLabel(frame_servicio, text="Duración (Ej. 2 horas)", **LABEL_STYLE).grid(row=2, column=0, sticky="w", padx=15)
-    ctk.CTkLabel(frame_servicio, text="Precio", **LABEL_STYLE).grid(row=2, column=1, sticky="w", padx=15)
-    entry_duration = ctk.CTkEntry(frame_servicio, width=220, **ENTRY_STYLE)
-    entry_duration.grid(row=3, column=0, padx=15, pady=(0, 15))
-    entry_price = ctk.CTkEntry(frame_servicio, width=220, **ENTRY_STYLE)
-    entry_price.grid(row=3, column=1, padx=15, pady=(0, 15))
+    frame_btn_serv = ctk.CTkFrame(frame_form_serv, fg_color="transparent")
+    frame_btn_serv.pack(fill="x")
+    ctk.CTkButton(frame_btn_serv, text="Guardar", command=guardar_servicio, fg_color=COLOR_VERDE_PRINCIPAL, width=145).grid(row=0, column=0, padx=(0,5), pady=5)
+    ctk.CTkButton(frame_btn_serv, text="Editar", command=editar_servicio, fg_color=COLOR_AZUL, width=145).grid(row=0, column=1, padx=(5,0), pady=5)
+    ctk.CTkButton(frame_btn_serv, text="Eliminar", command=eliminar_servicio, fg_color=COLOR_ROJO, width=145).grid(row=1, column=0, padx=(0,5), pady=5)
+    ctk.CTkButton(frame_btn_serv, text="Cancelar", command=limpiar_servicio, fg_color=COLOR_GRIS_OSCURO, width=145).grid(row=1, column=1, padx=(5,0), pady=5)
 
-    # Fila 3: Mecánico y VIN
-    ctk.CTkLabel(frame_servicio, text="Mecánico asignado", **LABEL_STYLE).grid(row=4, column=0, sticky="w", padx=15)
-    ctk.CTkLabel(frame_servicio, text="VIN del Auto (Número)", **LABEL_STYLE).grid(row=4, column=1, sticky="w", padx=15)
-    entry_worker = ctk.CTkEntry(frame_servicio, width=220, **ENTRY_STYLE)
-    entry_worker.grid(row=5, column=0, padx=15, pady=(0, 20))
-    entry_vin_servicio = ctk.CTkEntry(frame_servicio, width=220, **ENTRY_STYLE)
-    entry_vin_servicio.grid(row=5, column=1, padx=15, pady=(0, 20))
+    frame_tabla_serv = ctk.CTkFrame(tab_servicio)
+    frame_tabla_serv.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
+    scroll_serv = ttk.Scrollbar(frame_tabla_serv)
+    scroll_serv.pack(side="right", fill="y")
+    tree_servicios = ttk.Treeview(frame_tabla_serv, columns=("ID", "Repuesto", "Duración", "Precio", "Mecánico", "VIN"), show="headings", yscrollcommand=scroll_serv.set)
+    for col in ("ID", "Repuesto", "Duración", "Precio", "Mecánico", "VIN"):
+        tree_servicios.heading(col, text=col)
+        tree_servicios.column(col, width=80 if col in ("ID", "Precio", "VIN") else 100)
+    tree_servicios.pack(expand=True, fill="both")
+    scroll_serv.config(command=tree_servicios.yview)
+    tree_servicios.bind("<ButtonRelease-1>", seleccionar_servicio)
 
-    # Fila 4: Botón
-    ctk.CTkButton(frame_servicio, text="Guardar Servicio", width=470, height=45, **BUTTON_STYLE,
-                  command=lambda: guardar_servicio(entry_id_service.get(), entry_part.get(), entry_duration.get(),
-                                                   entry_price.get(), entry_worker.get(), entry_vin_servicio.get())
-                  ).grid(row=6, column=0, columnspan=2, pady=10)
-
+    # Cargar datos al iniciar
+    cargar_clientes(); cargar_autos(); cargar_servicios()
+    actualizar_clientes_combo() # Llenar el buscador por primera vez
+    
     ventana_menu.mainloop()
-
 
 # --- Ventana de login ---
 def login():
     usuario = entry_usuario.get()
     contraseña = entry_contraseña.get()
     try:
-        conn = conectar()
-        cursor = conn.cursor()
+        conn = conectar(); cursor = conn.cursor()
         cursor.execute("SELECT * FROM Users WHERE Username=? AND Password=?", (usuario, contraseña))
         resultado = cursor.fetchone()
-        
         if resultado:
-            ventana_login.destroy()
-            abrir_menu_principal()
+            ventana_login.destroy(); abrir_menu_principal()
         else:
             messagebox.showerror("Error", "Usuario o contraseña incorrectos")
         conn.close()
-    except Exception as e:
-        messagebox.showerror("Error de Conexión o Interfaz", f"Ocurrió un problema:\n{str(e)}")
+    except Exception as e: messagebox.showerror("Error de Conexión", str(e))
 
 ventana_login = ctk.CTk()
 ventana_login.title("Login Taller")
 ventana_login.geometry("450x500")
-ventana_login.configure(fg_color=COLOR_GRIS_CLARO)
 
-frame_login = ctk.CTkFrame(ventana_login, fg_color=COLOR_BLANCO, corner_radius=15, border_width=1, border_color=COLOR_GRIS_BORDE)
+establecer_fondo(ventana_login)
+
+frame_login = ctk.CTkFrame(ventana_login, fg_color=COLOR_BLANCO, corner_radius=15, border_width=1, border_color=COLOR_GRIS_BORDE, bg_color="transparent")
 frame_login.pack(pady=40, padx=40, fill="both", expand=True)
 
-# Ícono y título en el login
 ctk.CTkLabel(frame_login, text="👤 Iniciar Sesión", font=("Arial", 24, "bold"), text_color=COLOR_NEGRO).pack(pady=(40, 25))
-
 ctk.CTkLabel(frame_login, text="Usuario", **LABEL_STYLE).pack(anchor="w", padx=65)
-entry_usuario = ctk.CTkEntry(frame_login, width=250, **ENTRY_STYLE)
-entry_usuario.pack(pady=(0, 15))
-
+entry_usuario = ctk.CTkEntry(frame_login, width=250, **ENTRY_STYLE); entry_usuario.pack(pady=(0, 15))
 ctk.CTkLabel(frame_login, text="Contraseña", **LABEL_STYLE).pack(anchor="w", padx=65)
-entry_contraseña = ctk.CTkEntry(frame_login, show="*", width=250, **ENTRY_STYLE)
-entry_contraseña.pack(pady=(0, 20))
+entry_contraseña = ctk.CTkEntry(frame_login, show="*", width=250, **ENTRY_STYLE); entry_contraseña.pack(pady=(0, 20))
 
-ctk.CTkButton(frame_login, text="Ingresar", command=login, width=250, height=45, **BUTTON_STYLE).pack(pady=(20, 40))
+ctk.CTkButton(frame_login, text="Ingresar", command=login, width=250, height=45, fg_color=COLOR_VERDE_PRINCIPAL).pack(pady=(20, 40))
 
 ventana_login.mainloop()
