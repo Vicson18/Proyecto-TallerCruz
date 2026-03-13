@@ -1,11 +1,13 @@
 import customtkinter as ctk
-import pyodbc
 from tkinter import messagebox
 from tkinter import ttk 
-import os
 from PIL import Image 
 
-import bot_taller # Tu archivo del bot
+# --- IMPORTACION DE MÓDULOS ---
+from conexion import conectar
+import bot_taller
+import reportes
+import graficos
 
 # --- CONFIGURACIÓN DEL TEMA ---
 ctk.set_appearance_mode("light") 
@@ -28,16 +30,6 @@ ENTRY_STYLE = {"fg_color": COLOR_BLANCO, "text_color": COLOR_NEGRO, "border_colo
 LABEL_STYLE = {"font": ("Arial", 12, "bold"), "text_color": "#666666"}
 
 lista_clientes_combo = []
-
-def conectar():
-    return pyodbc.connect(
-        'DRIVER={ODBC Driver 18 for SQL Server};'
-        'SERVER=localhost\\SQLEXPRESS;'  
-        'DATABASE=taller;'
-        'Trusted_Connection=yes;'
-        'Encrypt=no;'
-        'TrustServerCertificate=yes;'
-    )
 
 def configurar_estilo_tablas():
     style = ttk.Style()
@@ -90,7 +82,6 @@ def dibujar_menu_reportes_bot():
     ctk.CTkButton(frame_opciones, text="💰 Ganancias", fg_color=COLOR_AZUL, command=lambda: ejecutar_comando_bot("GANANCIAS", "¿Cuáles son las ganancias totales?")).pack(side="left", padx=2, expand=True, fill="x", ipady=5)
     ctk.CTkButton(frame_opciones, text="👥 Clientes", fg_color=COLOR_AZUL, command=lambda: ejecutar_comando_bot("TOTAL_CLIENTES", "¿Cuántos clientes tenemos?")).pack(side="left", padx=2, expand=True, fill="x", ipady=5)
     ctk.CTkButton(frame_opciones, text="🚗 Autos", fg_color=COLOR_AZUL, command=lambda: ejecutar_comando_bot("TOTAL_AUTOS", "¿Cuántos autos hay?")).pack(side="left", padx=2, expand=True, fill="x", ipady=5)
-    
     ctk.CTkButton(frame_opciones, text="🔙 Volver", fg_color=COLOR_GRIS_OSCURO, command=dibujar_menu_principal_bot).pack(side="left", padx=10, expand=True, fill="x", ipady=5)
 
 def accion_buscar_cliente_bot():
@@ -103,9 +94,7 @@ def ejecutar_comando_bot(comando, texto_usuario, parametro=""):
     chat_display.configure(state="normal")
     chat_display.insert("end", f"🧑 Tú: {texto_usuario}\n\n")
     chat_display.update()
-    
     respuesta_bot = bot_taller.procesar_comando(comando, parametro)
-    
     chat_display.insert("end", f"{respuesta_bot}\n")
     chat_display.insert("end", "-"*50 + "\n\n")
     chat_display.configure(state="disabled")
@@ -163,7 +152,7 @@ def eliminar_cliente():
             cursor.execute("DELETE FROM Customers WHERE Id_Customer=?", (id_cliente,))
             conn.commit(); conn.close()
             messagebox.showinfo("Éxito", "Cliente eliminado"); limpiar_cliente(); cargar_clientes(); actualizar_clientes_combo() 
-        except pyodbc.IntegrityError: messagebox.showerror("Error de Integridad", "No se puede eliminar el cliente porque tiene autos registrados.")
+        except pyodbc.IntegrityError: messagebox.showerror("Error", "No se puede eliminar el cliente porque tiene autos registrados.")
         except Exception as e: messagebox.showerror("Error", str(e))
 
 def cargar_autos():
@@ -176,8 +165,7 @@ def cargar_autos():
     except Exception as e: messagebox.showerror("Error", str(e))
 
 def limpiar_auto():
-    entry_make.delete(0, 'end'); entry_model.delete(0, 'end'); entry_year.delete(0, 'end'); entry_color.delete(0, 'end')
-    combo_customer.set("") 
+    entry_make.delete(0, 'end'); entry_model.delete(0, 'end'); entry_year.delete(0, 'end'); entry_color.delete(0, 'end'); combo_customer.set("") 
     if tree_autos.selection(): tree_autos.selection_remove(tree_autos.selection())
 
 def seleccionar_auto(event):
@@ -195,7 +183,7 @@ def seleccionar_auto(event):
 def guardar_auto():
     try:
         seleccion_combo = combo_customer.get()
-        if not seleccion_combo or " - " not in seleccion_combo: return messagebox.showwarning("Advertencia", "Por favor seleccione un cliente válido de la lista.")
+        if not seleccion_combo or " - " not in seleccion_combo: return messagebox.showwarning("Advertencia", "Seleccione un cliente válido.")
         id_cliente = int(seleccion_combo.split(" - ")[0])
         conn = conectar(); cursor = conn.cursor()
         cursor.execute("INSERT INTO Carts (Make, Model, ModelYear, Color, Id_Customer) VALUES (?,?,?,?,?)", (entry_make.get(), entry_model.get(), entry_year.get(), entry_color.get(), id_cliente))
@@ -209,7 +197,7 @@ def editar_auto():
     vin = int(str(tree_autos.item(seleccion, 'values')[0]).replace(',', ''))
     try:
         seleccion_combo = combo_customer.get()
-        if not seleccion_combo or " - " not in seleccion_combo: return messagebox.showwarning("Advertencia", "Por favor seleccione un cliente válido de la lista.")
+        if not seleccion_combo or " - " not in seleccion_combo: return messagebox.showwarning("Advertencia", "Seleccione un cliente válido.")
         id_cliente = int(seleccion_combo.split(" - ")[0])
         conn = conectar(); cursor = conn.cursor()
         cursor.execute("UPDATE Carts SET Make=?, Model=?, ModelYear=?, Color=?, Id_Customer=? WHERE VIN=?", (entry_make.get(), entry_model.get(), entry_year.get(), entry_color.get(), id_cliente, vin))
@@ -257,7 +245,6 @@ def guardar_servicio():
         cursor.execute("INSERT INTO Services (ReplacedPart, Duration, Price, Worker, VIN) VALUES (?,?,?,?,?)", (entry_part.get(), entry_duration.get(), entry_price.get(), entry_worker.get(), vin_auto))
         conn.commit(); conn.close()
         limpiar_servicio(); cargar_servicios()
-    except ValueError: messagebox.showerror("Error", "El campo VIN Auto debe ser numérico.")
     except Exception as e: messagebox.showerror("Error", str(e))
 
 def editar_servicio():
@@ -270,7 +257,6 @@ def editar_servicio():
         cursor.execute("UPDATE Services SET ReplacedPart=?, Duration=?, Price=?, Worker=?, VIN=? WHERE Id_Service=?", (entry_part.get(), entry_duration.get(), entry_price.get(), entry_worker.get(), vin_auto, id_antiguo))
         conn.commit(); conn.close()
         limpiar_servicio(); cargar_servicios()
-    except ValueError: messagebox.showerror("Error", "El campo VIN Auto debe ser numérico.")
     except Exception as e: messagebox.showerror("Error", str(e))
 
 def eliminar_servicio():
@@ -284,6 +270,20 @@ def eliminar_servicio():
             conn.commit(); conn.close()
             limpiar_servicio(); cargar_servicios()
         except Exception as e: messagebox.showerror("Error", str(e))
+
+# Llama a módulo "reportes"
+def pedir_ticket_pdf():
+    seleccion = tree_servicios.focus()
+    if not seleccion: 
+        return messagebox.showwarning("Advertencia", "Seleccione un servicio de la tabla para generar su ticket.")
+    
+    valores = tree_servicios.item(seleccion, 'values')
+    exito, mensaje = reportes.crear_pdf(valores[0], valores[1], valores[3], valores[5])
+    
+    if exito:
+        messagebox.showinfo("Éxito", mensaje)
+    else:
+        messagebox.showerror("Error", mensaje)
 
 def establecer_fondo(ventana):
     try:
@@ -305,15 +305,11 @@ def abrir_menu_principal():
     ventana_menu.title("Menú Taller")
     ventana_menu.geometry("1100x700") 
     configurar_estilo_tablas()
-    
-    # 1. Establecemos el fondo en la ventana principal
     establecer_fondo(ventana_menu)
 
-    # 2. Título "Flat" (Rectangular)
     titulo = ctk.CTkLabel(ventana_menu, text="🔧 Gestión del Taller", font=("Arial", 28, "bold"), text_color=COLOR_BLANCO, fg_color=COLOR_PLACA_TITULO, corner_radius=0, padx=30, pady=10)
     titulo.pack(pady=(20, 10))
 
-    # 3. Contenedor "Flat" (Rectangular) blanco
     main_container = ctk.CTkFrame(ventana_menu, fg_color=COLOR_BLANCO, corner_radius=0)
     main_container.pack(expand=True, fill="both", padx=30, pady=(0, 30))
 
@@ -426,6 +422,8 @@ def abrir_menu_principal():
     ctk.CTkButton(frame_btn_serv, text="Editar", command=editar_servicio, fg_color=COLOR_AZUL, width=145).grid(row=0, column=1, padx=(5,0), pady=5)
     ctk.CTkButton(frame_btn_serv, text="Eliminar", command=eliminar_servicio, fg_color=COLOR_ROJO, width=145).grid(row=1, column=0, padx=(0,5), pady=5)
     ctk.CTkButton(frame_btn_serv, text="Cancelar", command=limpiar_servicio, fg_color=COLOR_GRIS_OSCURO, width=145).grid(row=1, column=1, padx=(5,0), pady=5)
+    
+    ctk.CTkButton(frame_btn_serv, text="📄 Generar Ticket en PDF", command=pedir_ticket_pdf, fg_color=COLOR_PLACA_TITULO, width=300).grid(row=2, column=0, columnspan=2, pady=(15,0))
 
     frame_tabla_serv = ctk.CTkFrame(tab_servicio)
     frame_tabla_serv.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
@@ -458,6 +456,17 @@ def abrir_menu_principal():
     
     dibujar_menu_principal_bot()
 
+    # ==========================================
+    # PESTAÑA ESTADÍSTICAS (DASHBOARD)
+    # ==========================================
+    tab_dashboard = tabview.add("Estadísticas")
+    ctk.CTkButton(tab_dashboard, text="🔄 Actualizar Gráficos", command=lambda: graficos.dibujar(frame_graficos), fg_color=COLOR_AZUL, width=200).pack(pady=(10, 0))
+    
+    frame_graficos = ctk.CTkFrame(tab_dashboard, fg_color="transparent")
+    frame_graficos.pack(fill="both", expand=True, padx=10, pady=10)
+    
+    graficos.dibujar(frame_graficos)
+
     cargar_clientes(); cargar_autos(); cargar_servicios(); actualizar_clientes_combo() 
     ventana_menu.mainloop()
 
@@ -483,7 +492,6 @@ ventana_login.geometry("450x500")
 
 establecer_fondo(ventana_login)
 
-# Login también cuadrado
 frame_login = ctk.CTkFrame(ventana_login, fg_color=COLOR_BLANCO, corner_radius=0, border_width=1, border_color=COLOR_GRIS_BORDE)
 frame_login.pack(pady=40, padx=40, fill="both", expand=True)
 

@@ -1,26 +1,14 @@
-import pyodbc
-
-# Conexión a SQL Server
-def conectar():
-    return pyodbc.connect(
-        'DRIVER={ODBC Driver 18 for SQL Server};'
-        'SERVER=localhost\\SQLEXPRESS;'  
-        'DATABASE=taller;'
-        'Trusted_Connection=yes;'
-        'Encrypt=no;'
-        'TrustServerCertificate=yes;'
-    )
+from conexion import conectar
 
 def procesar_comando(comando, parametro=""):
     """Recibe comandos exactos desde los botones y devuelve la respuesta"""
     respuesta = ""
-    
     try:
         conn = conectar()
         cursor = conn.cursor()
         
         if comando == "GANANCIAS":
-            cursor.execute("SELECT SUM(Price) FROM Services")
+            cursor.execute("SELECT SUM(Price) FROM Services WHERE Price IS NOT NULL")
             total = cursor.fetchone()[0]
             if total:
                 respuesta = f"🤖 Hasta ahora, el taller ha generado un total de ${total:,.2f}."
@@ -38,20 +26,15 @@ def procesar_comando(comando, parametro=""):
             respuesta = f"🤖 Hay {total_autos} vehículos registrados en el taller."
 
         elif comando == "BUSCAR_CLIENTE":
-            # Separa lo que el usuario escribió (Ej: "Juan Perez" -> ["Juan", "Perez"])
             palabras = parametro.split()
-            
-            # Preparcion de la consulta base
             consulta_sql = "SELECT Name, LastName, Cellphone FROM Customers WHERE "
             condiciones = []
             parametros_sql = []
             
-            # Exige que cada palabra exista en el Nombre O en el Apellido
             for palabra in palabras:
                 condiciones.append("(Name LIKE ? OR LastName LIKE ?)")
                 parametros_sql.extend([f'%{palabra}%', f'%{palabra}%'])
             
-            # Se unen las condiciones con "AND"
             consulta_sql += " AND ".join(condiciones)
             
             cursor.execute(consulta_sql, parametros_sql)
