@@ -65,7 +65,11 @@ INSTRUCCIONES:
     try:
         response = requests.post(
             "https://api.anthropic.com/v1/messages",
-            headers={"Content-Type": "application/json"},
+            headers={
+                 "Content-Type": "application/json",
+        "x-api-key": "TU_API_KEY_AQUI",
+        "anthropic-version": "2023-06-01"
+            },
             json={
                 "model": "claude-sonnet-4-6",
                 "max_tokens": 1000,

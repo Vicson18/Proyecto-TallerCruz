@@ -436,7 +436,7 @@ def abrir_menu_principal():
 
     # --- PÁGINA: AUTOS ---
     # ← CORRECCIÓN: f_form_au se crea ANTES de usarlo
-    f_form_au = ctk.CTkFrame(paginas["au"], fg_color=COLOR_BG_CARD, corner_radius=15)
+    f_form_au = ctk.CTkScrollableFrame(paginas["au"], fg_color=COLOR_BG_CARD, corner_radius=15, width=420)
     f_form_au.pack(side="left", fill="y", padx=(0, 30))
     ctk.CTkLabel(f_form_au, text="Ficha Técnica", font=("Segoe UI", 20, "bold"), text_color=COLOR_TEXT_MAIN).pack(pady=20)
 
@@ -461,7 +461,7 @@ def abrir_menu_principal():
     tree_autos.bind("<ButtonRelease-1>", seleccionar_auto)
 
     # --- PÁGINA: SERVICIOS ---
-    f_form_ser = ctk.CTkFrame(paginas["ser"], fg_color=COLOR_BG_CARD, corner_radius=15)
+    f_form_ser = ctk.CTkScrollableFrame(paginas["ser"], fg_color=COLOR_BG_CARD, corner_radius=15, width=420)
     f_form_ser.pack(side="left", fill="y", padx=(0, 30))
     ctk.CTkLabel(f_form_ser, text="Orden de Trabajo", font=("Segoe UI", 20, "bold"), text_color=COLOR_TEXT_MAIN).pack(pady=20)
     
