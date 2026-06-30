@@ -23,3 +23,17 @@ env/
 build/
 dist/
 *.spec
+
+# =========================
+# Archivos de Datos y Descargas
+# =========================
+*.mdf
+*.ldf
+Downloads/
+
+# =========================
+# Archivos de Compilación Móvil/Otros
+# =========================
+*.apk
+bin/
+obj/

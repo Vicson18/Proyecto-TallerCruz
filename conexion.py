@@ -3,7 +3,7 @@ import pyodbc
 def conectar():
     return pyodbc.connect(
         'DRIVER={ODBC Driver 18 for SQL Server};'
-        'SERVER=localhost\\SQLEXPRESS;'  
+        'SERVER=(localdb)\\MSSQLLocalDB;'
         'DATABASE=taller;'
         'Trusted_Connection=yes;'
         'Encrypt=no;'

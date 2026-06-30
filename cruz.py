@@ -63,18 +63,17 @@ def efecto_maquina_escribir(textbox, texto, tag, entry_widget, index=0):
     """Escribe letra por letra sin congelar el programa usando el mainloop"""
     if index == 0:
         textbox.configure(state="normal")
-        entry_widget.configure(state="disabled") # Bloquea el input mientras el bot escribe
+        entry_widget.configure(state="disabled")
         
     if not textbox.winfo_exists(): return
 
     if index < len(texto):
         textbox.insert("end", texto[index], tag)
         textbox.see("end")
-        # Controla la velocidad de escritura (10 ms por letra)
         textbox.after(10, efecto_maquina_escribir, textbox, texto, tag, entry_widget, index + 1)
     else:
         textbox.configure(state="disabled")
-        entry_widget.configure(state="normal") # Libera el input al terminar
+        entry_widget.configure(state="normal")
         entry_widget.focus()
 
 def configurar_estilo_tablas():
@@ -202,12 +201,16 @@ def cargar_autos():
 
 def guardar_auto():
     texto = search_customer.get()
-    if "(ID:" not in texto: return messagebox.showwarning("Error", "Selecciona un cliente de la lista sugerida.")
+    vin_valor = entry_vin.get().strip()
+    if not vin_valor:
+        return messagebox.showwarning("Error", "El VIN es obligatorio.")
+    if "(ID:" not in texto:
+        return messagebox.showwarning("Error", "Selecciona un cliente de la lista sugerida.")
     try:
         id_cli = int(texto.split("(ID:")[1].replace(")", ""))
         conn = conectar(); cursor = conn.cursor()
-        cursor.execute("INSERT INTO Carts (Make, Model, ModelYear, Color, Id_Customer) VALUES (?,?,?,?,?)", 
-                       (entry_make.get(), entry_model.get(), entry_year.get(), entry_color.get(), id_cli))
+        cursor.execute("INSERT INTO Carts (VIN, Make, Model, ModelYear, Color, Id_Customer) VALUES (?,?,?,?,?,?)", 
+                       (vin_valor, entry_make.get(), entry_model.get(), entry_year.get(), entry_color.get(), id_cli))
         conn.commit(); conn.close(); cargar_autos(); actualizar_datos_precarga(); limpiar_auto()
         messagebox.showinfo("Éxito", "Vehículo registrado.")
     except Exception as e: messagebox.showerror("Error", str(e))
@@ -215,31 +218,35 @@ def guardar_auto():
 def editar_auto():
     seleccion = tree_autos.focus()
     if not seleccion: return messagebox.showwarning("Advertencia", "Seleccione un auto.")
-    vin = int(str(tree_autos.item(seleccion, 'values')[0]).replace(',', ''))
+    vin_original = str(tree_autos.item(seleccion, 'values')[0]).replace(',', '')
     texto = search_customer.get()
     if "(ID:" not in texto: return messagebox.showwarning("Error", "Seleccione un propietario válido.")
     try:
         id_cli = int(texto.split("(ID:")[1].replace(")", ""))
         conn = conectar(); cursor = conn.cursor()
-        cursor.execute("UPDATE Carts SET Make=?, Model=?, ModelYear=?, Color=?, Id_Customer=? WHERE VIN=?", 
-                       (entry_make.get(), entry_model.get(), entry_year.get(), entry_color.get(), id_cli, vin))
-        conn.commit(); conn.close(); cargar_autos(); limpiar_auto()
+        cursor.execute("UPDATE Carts SET VIN=?, Make=?, Model=?, ModelYear=?, Color=?, Id_Customer=? WHERE VIN=?", 
+                       (entry_vin.get().strip(), entry_make.get(), entry_model.get(), entry_year.get(), entry_color.get(), id_cli, vin_original))
+        conn.commit(); conn.close(); cargar_autos(); actualizar_datos_precarga(); limpiar_auto()
         messagebox.showinfo("Éxito", "Vehículo actualizado.")
     except Exception as e: messagebox.showerror("Error", str(e))
 
 def eliminar_auto():
     seleccion = tree_autos.focus()
     if not seleccion: return messagebox.showwarning("Advertencia", "Seleccione un auto.")
-    vin = int(str(tree_autos.item(seleccion, 'values')[0]).replace(',', ''))
+    vin = str(tree_autos.item(seleccion, 'values')[0]).replace(',', '')
     if messagebox.askyesno("Confirmar", "¿Eliminar vehículo del sistema?"):
         try:
             conn = conectar(); cursor = conn.cursor()
             cursor.execute("DELETE FROM Carts WHERE VIN=?", (vin,))
-            conn.commit(); conn.close(); cargar_autos(); limpiar_auto()
+            conn.commit(); conn.close(); cargar_autos(); actualizar_datos_precarga(); limpiar_auto()
         except Exception: messagebox.showerror("Error", "No se puede eliminar (tiene servicios vinculados).")
 
 def limpiar_auto():
-    entry_make.delete(0, 'end'); entry_model.delete(0, 'end'); entry_year.delete(0, 'end'); entry_color.delete(0, 'end')
+    entry_vin.delete(0, 'end')
+    entry_make.delete(0, 'end')
+    entry_model.delete(0, 'end')
+    entry_year.delete(0, 'end')
+    entry_color.delete(0, 'end')
     search_customer.delete(0, 'end')
 
 def seleccionar_auto(event):
@@ -247,10 +254,15 @@ def seleccionar_auto(event):
     if seleccion:
         valores = tree_autos.item(seleccion, 'values')
         limpiar_auto()
-        entry_make.insert(0, valores[1]); entry_model.insert(0, valores[2]); entry_year.insert(0, valores[3]); entry_color.insert(0, valores[4])
+        entry_vin.insert(0, valores[0])
+        entry_make.insert(0, valores[1])
+        entry_model.insert(0, valores[2])
+        entry_year.insert(0, valores[3])
+        entry_color.insert(0, valores[4])
         id_buscado = str(valores[5]).replace(',', '')
         for cli_id, cli_nombre in lista_clientes_data:
-            if str(cli_id) == id_buscado: search_customer.insert(0, cli_nombre); break
+            if str(cli_id) == id_buscado:
+                search_customer.insert(0, cli_nombre); break
 
 def cargar_servicios():
     for row in tree_servicios.get_children(): tree_servicios.delete(row)
@@ -331,7 +343,6 @@ def actualizar_datos_precarga():
     except: pass
 
 def enviar_mensaje_chat(event=None):
-    # Previene que el usuario mande más mensajes mientras el bot está escribiendo
     if entry_chat.cget("state") == "disabled": return 
     
     m = entry_chat.get()
@@ -344,15 +355,15 @@ def enviar_mensaje_chat(event=None):
     r = bot_taller.procesar_lenguaje_natural(m)
     texto_respuesta = f"🤖 Sistema: {r}\n\n"
     
-    # Inicia la animación de máquina de escribir
     efecto_maquina_escribir(chat_display, texto_respuesta, "bot_tag", entry_chat)
 
 # ==========================================
 # INTERFAZ PRINCIPAL
 # ==========================================
 def abrir_menu_principal():
+    # ← CORRECCIÓN: entry_vin agregado a los globals
     global entry_name, entry_lastname, entry_cellphone, tree_clientes
-    global entry_make, entry_model, entry_year, entry_color, search_customer, tree_autos
+    global entry_vin, entry_make, entry_model, entry_year, entry_color, search_customer, tree_autos
     global entry_part, entry_duration, entry_price, entry_worker, search_vin, tree_servicios
     global chat_display, entry_chat
 
@@ -424,10 +435,13 @@ def abrir_menu_principal():
     tree_clientes.bind("<ButtonRelease-1>", seleccionar_cliente)
 
     # --- PÁGINA: AUTOS ---
+    # ← CORRECCIÓN: f_form_au se crea ANTES de usarlo
     f_form_au = ctk.CTkFrame(paginas["au"], fg_color=COLOR_BG_CARD, corner_radius=15)
     f_form_au.pack(side="left", fill="y", padx=(0, 30))
     ctk.CTkLabel(f_form_au, text="Ficha Técnica", font=("Segoe UI", 20, "bold"), text_color=COLOR_TEXT_MAIN).pack(pady=20)
-    
+
+    entry_vin = ctk.CTkEntry(f_form_au, placeholder_text="VIN (Número de Serie)", width=360, height=45, **ENTRY_STYLE)
+    entry_vin.pack(pady=8, padx=30)
     entry_make = ctk.CTkEntry(f_form_au, placeholder_text="Marca", width=360, height=45, **ENTRY_STYLE); entry_make.pack(pady=8, padx=30)
     entry_model = ctk.CTkEntry(f_form_au, placeholder_text="Modelo", width=360, height=45, **ENTRY_STYLE); entry_model.pack(pady=8, padx=30)
     entry_year = ctk.CTkEntry(f_form_au, placeholder_text="Año", width=360, height=45, **ENTRY_STYLE); entry_year.pack(pady=8, padx=30)
@@ -482,7 +496,6 @@ def abrir_menu_principal():
     
     animar_entrada(ventana_menu)
 
-    # Inicia la animación del mensaje de bienvenida una vez que la ventana está visible
     msg_bienvenida = (
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         " 🔧 SISTEMA DE ASISTENCIA - CRUZ PRO INICIADO \n"
