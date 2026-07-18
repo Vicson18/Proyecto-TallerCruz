@@ -2,12 +2,14 @@ import customtkinter as ctk
 
 import estado
 from estilo import (COLOR_BG_BASE, COLOR_BG_CARD, COLOR_ACCENT, COLOR_TEXT_MAIN,
-                     COLOR_TEXT_DIM, BTN_TOP_NAV, configurar_estilo_tablas, animar_entrada)
+                     COLOR_TEXT_DIM, BTN_TOP_NAV, configurar_estilo_tablas,
+                     configurar_combobox_oscuro, animar_entrada)
 from Frame_Login import FrameLogin
 from Frame_IA import FrameIA
 from Frame_Clientes import FrameClientes
 from Frame_Flota import FrameFlota
 from Frame_Ordenes import FrameOrdenes
+from Frame_Inventario import FrameInventario
 from Frame_Metricas import FrameMetricas
 
 # ==========================================
@@ -20,6 +22,7 @@ def abrir_menu_principal(ventana_login):
     ventana_menu.geometry("1500x900")
     ventana_menu.configure(fg_color=COLOR_BG_BASE)
     configurar_estilo_tablas()
+    configurar_combobox_oscuro(ventana_menu)
 
     # ── TOP BAR ──────────────────────────────────────────────
     top_bar = ctk.CTkFrame(ventana_menu, fg_color=COLOR_BG_CARD, height=64, corner_radius=0)
@@ -49,23 +52,31 @@ def abrir_menu_principal(ventana_login):
         btn.configure(text_color="#ffffff", fg_color="#1a0000")
         for p in paginas.values(): p.pack_forget()
         paginas[nombre].pack(expand=True, fill="both")
+        # Cada pestaña muestra datos que pueden haber cambiado desde otra
+        # pestaña (p.ej. el stock tras agregar un servicio en ÓRDENES), así
+        # que se recarga la tabla correspondiente al entrar.
+        if nombre == "cli": frame_clientes.cargar()
+        elif nombre == "au": frame_flota.cargar()
+        elif nombre == "ser": frame_ordenes.cargar_ordenes()
+        elif nombre == "inv": frame_inventario.cargar()
 
     btns = {}
     secciones = [("bot","⬡  IA"), ("cli","👤  CLIENTES"), ("au","🚗  FLOTA"),
-                 ("ser","🔧  ÓRDENES"), ("dash","📊  MÉTRICAS")]
+                 ("ser","🔧  ÓRDENES"), ("inv","📦  INVENTARIO"), ("dash","📊  MÉTRICAS")]
     for id_p, txt in secciones:
         btns[id_p] = ctk.CTkButton(nav_frame, text=txt,
                                     command=lambda i=id_p: ir_a(i, btns[i]),
                                     width=130, height=64, **BTN_TOP_NAV)
         btns[id_p].pack(side="left", padx=0)
 
-    for p in ["bot", "cli", "au", "ser", "dash"]:
+    for p in ["bot", "cli", "au", "ser", "inv", "dash"]:
         paginas[p] = ctk.CTkFrame(container_main, fg_color=COLOR_BG_BASE, corner_radius=0)
 
     FrameIA(paginas["bot"])
-    FrameClientes(paginas["cli"])
-    FrameFlota(paginas["au"])
-    FrameOrdenes(paginas["ser"])
+    frame_clientes = FrameClientes(paginas["cli"])
+    frame_flota = FrameFlota(paginas["au"])
+    frame_ordenes = FrameOrdenes(paginas["ser"])
+    frame_inventario = FrameInventario(paginas["inv"])
     FrameMetricas(paginas["dash"])
 
     # ── INIT ──────────────────────────────────────────────────

@@ -75,12 +75,13 @@ class FrameFlota:
         self.buscar_entry.pack(side="left", expand=True, fill="x")
         self.buscar_entry.bind("<KeyRelease>", lambda e: self.cargar(self.buscar_entry.get().strip()))
 
-        self.tree = ttk.Treeview(t_frame_au, columns=("VIN","Marca","Modelo","Año","Color","ID_Cli"), show="headings")
+        self.tree = ttk.Treeview(t_frame_au, columns=("VIN","Marca","Modelo","Año","Color","Propietario","Fecha"), show="headings")
         encabezados = [("VIN","VIN",190),("Marca","MARCA",110),("Modelo","MODELO",120),
-                        ("Año","AÑO",70),("Color","COLOR",100),("ID_Cli","ID CLIENTE",90)]
+                        ("Año","AÑO",70),("Color","COLOR",100),("Propietario","PROPIETARIO",160),
+                        ("Fecha","REGISTRADO",100)]
         for c, txt, w in encabezados:
             self.tree.heading(c, text=txt)
-            self.tree.column(c, width=w, anchor="center" if c in ("Año","ID_Cli") else "w")
+            self.tree.column(c, width=w, anchor="center" if c in ("Año","Fecha") else "w")
         self.tree.pack(expand=True, fill="both", padx=2, pady=(0, 2))
         self.tree.bind("<ButtonRelease-1>", self.seleccionar)
 
@@ -94,18 +95,22 @@ class FrameFlota:
         for row in self.tree.get_children(): self.tree.delete(row)
         try:
             conn = conectar(); cursor = conn.cursor()
+            base = ("SELECT Ca.VIN, Ca.Make, Ca.Model, Ca.ModelYear, Ca.Color, Ca.Id_Customer, Ca.InsertedDate, "
+                    "Cu.Name, Cu.LastName FROM Carts Ca LEFT JOIN Customers Cu ON Ca.Id_Customer = Cu.Id_Customer")
             if filtro:
                 like = f"%{filtro}%"
                 cursor.execute(
-                    "SELECT VIN, Make, Model, ModelYear, Color, Id_Customer FROM Carts "
-                    "WHERE VIN LIKE ? OR Make LIKE ? OR Model LIKE ? OR Color LIKE ?",
+                    base + " WHERE Ca.VIN LIKE ? OR Ca.Make LIKE ? OR Ca.Model LIKE ? OR Ca.Color LIKE ?",
                     (like, like, like, like))
             else:
-                cursor.execute("SELECT VIN, Make, Model, ModelYear, Color, Id_Customer FROM Carts")
+                cursor.execute(base)
             filas = cursor.fetchall()
             for i, row in enumerate(filas):
                 tag = 'even' if i % 2 == 0 else 'odd'
-                self.tree.insert("", "end", values=[str(v) for v in row], tags=(tag,))
+                fecha = row[6].strftime("%d/%m/%Y") if row[6] else "—"
+                propietario = f"{row[7]} {row[8]}" if row[7] else "—"
+                valores = [str(v) for v in row[:5]] + [propietario, fecha, str(row[5]) if row[5] is not None else ""]
+                self.tree.insert("", "end", iid=row[0], values=valores, tags=(tag,))
             self.tree.tag_configure('even', background=COLOR_BG_CARD)
             self.tree.tag_configure('odd', background=COLOR_BG_CARD_ALT)
             etiqueta = "RESULTADO" if filtro else "VEHÍCULO"
@@ -121,7 +126,7 @@ class FrameFlota:
         try:
             id_cli = int(texto.split("(ID:")[1].replace(")", ""))
             conn = conectar(); cursor = conn.cursor()
-            cursor.execute("INSERT INTO Carts (VIN, Make, Model, ModelYear, Color, Id_Customer) VALUES (?,?,?,?,?,?)",
+            cursor.execute("INSERT INTO Carts (VIN, Make, Model, ModelYear, Color, Id_Customer, InsertedDate) VALUES (?,?,?,?,?,?, GETDATE())",
                            (vin_valor, self.entry_make.get(), self.entry_model.get(), self.entry_year.get(), self.entry_color.get(), id_cli))
             conn.commit(); conn.close(); self.cargar(); estado.actualizar_datos_precarga(); self.limpiar()
             messagebox.showinfo("Éxito", "Vehículo registrado.")
@@ -130,7 +135,7 @@ class FrameFlota:
     def editar(self):
         seleccion = self.tree.focus()
         if not seleccion: return messagebox.showwarning("Advertencia", "Seleccione un auto.")
-        vin_original = str(self.tree.item(seleccion, 'values')[0]).replace(',', '')
+        vin_original = seleccion
         texto = self.search_customer.get()
         if "(ID:" not in texto: return messagebox.showwarning("Error", "Seleccione un propietario válido.")
         try:
@@ -145,7 +150,7 @@ class FrameFlota:
     def eliminar(self):
         seleccion = self.tree.focus()
         if not seleccion: return messagebox.showwarning("Advertencia", "Seleccione un auto.")
-        vin = str(self.tree.item(seleccion, 'values')[0]).replace(',', '')
+        vin = seleccion
         if messagebox.askyesno("Confirmar", "¿Eliminar vehículo del sistema?"):
             try:
                 conn = conectar(); cursor = conn.cursor()
@@ -165,7 +170,7 @@ class FrameFlota:
             self.entry_vin.insert(0, valores[0]); self.entry_make.insert(0, valores[1])
             self.entry_model.insert(0, valores[2]); self.entry_year.insert(0, valores[3])
             self.entry_color.insert(0, valores[4])
-            id_buscado = str(valores[5]).replace(',', '')
+            id_buscado = str(valores[7]) if len(valores) > 7 else ""
             for cli_id, cli_nombre in estado.lista_clientes_data:
                 if str(cli_id) == id_buscado:
                     self.search_customer.insert(0, cli_nombre); break

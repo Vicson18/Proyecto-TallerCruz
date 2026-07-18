@@ -27,8 +27,9 @@ def dibujar_profesional(contenedor):
         cantidades = [int(row[1]) for row in datos_marcas] if datos_marcas else [1]
 
         cursor.execute(
-            "SELECT TOP 5 ReplacedPart, COUNT(*) c FROM Services "
-            "GROUP BY ReplacedPart ORDER BY c DESC")
+            "SELECT TOP 5 I.PartName, COUNT(*) c FROM Services S "
+            "JOIN Inventory I ON S.Id_Part = I.Id_Part "
+            "GROUP BY I.PartName ORDER BY c DESC")
         datos_top = cursor.fetchall()
         repuestos = [row[0] for row in datos_top] if datos_top else ["Sin datos"]
         repuestos_cant = [int(row[1]) for row in datos_top] if datos_top else [0]

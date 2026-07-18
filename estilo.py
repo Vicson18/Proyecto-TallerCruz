@@ -92,6 +92,28 @@ def configurar_estilo_tablas():
                     font=("Segoe UI", 12, "bold"))
 
 
+def configurar_combobox_oscuro(root):
+    style = ttk.Style()
+    style.configure("Dark.TCombobox",
+                    fieldbackground=COLOR_BG_INPUT,
+                    background=COLOR_BG_INPUT,
+                    foreground=COLOR_TEXT_MAIN,
+                    arrowcolor=COLOR_ACCENT,
+                    bordercolor=COLOR_BORDER,
+                    lightcolor=COLOR_BG_INPUT,
+                    darkcolor=COLOR_BG_INPUT,
+                    padding=6)
+    style.map("Dark.TCombobox",
+              fieldbackground=[('readonly', COLOR_BG_INPUT)],
+              foreground=[('readonly', COLOR_TEXT_MAIN)],
+              background=[('readonly', COLOR_BG_INPUT)])
+    root.option_add("*TCombobox*Listbox.background", COLOR_BG_INPUT)
+    root.option_add("*TCombobox*Listbox.foreground", COLOR_TEXT_MAIN)
+    root.option_add("*TCombobox*Listbox.selectBackground", COLOR_ACCENT)
+    root.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
+    root.option_add("*TCombobox*Listbox.font", ("Segoe UI", 12))
+
+
 def hacer_boton_accion(parent, texto, color, comando, icono=""):
     texto_completo = f"{icono}  {texto}" if icono else texto
     return ctk.CTkButton(parent, text=texto_completo, fg_color=color,
@@ -110,6 +132,8 @@ def mostrar_autocomplete(entry_widget, tipo):
         opciones = [c[1] for c in estado.lista_clientes_data if texto in c[1].lower()]
     elif tipo == "auto":
         opciones = [str(v) for v in estado.lista_autos_vin if texto in str(v).lower()]
+    elif tipo == "parte":
+        opciones = [p[1] for p in estado.lista_inventario_data if texto in p[1].lower()]
     opciones = opciones[:5]
     if not opciones: return
     x = entry_widget.winfo_rootx()

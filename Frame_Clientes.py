@@ -76,8 +76,8 @@ class FrameClientes:
         self.buscar_entry.pack(side="left", expand=True, fill="x")
         self.buscar_entry.bind("<KeyRelease>", lambda e: self.cargar(self.buscar_entry.get().strip()))
 
-        self.tree = ttk.Treeview(t_frame_cli, columns=("ID","Nombre","Apellido","Tel"), show="headings")
-        for c, w in [("ID",70),("Nombre",220),("Apellido",220),("Tel",160)]:
+        self.tree = ttk.Treeview(t_frame_cli, columns=("Nombre","Apellido","Tel"), show="headings")
+        for c, w in [("Nombre",220),("Apellido",220),("Tel",160)]:
             self.tree.heading(c, text=c); self.tree.column(c, width=w)
         self.tree.pack(expand=True, fill="both", padx=2, pady=(0, 2))
         self.tree.bind("<ButtonRelease-1>", self.seleccionar)
@@ -102,7 +102,8 @@ class FrameClientes:
             filas = cursor.fetchall()
             for i, row in enumerate(filas):
                 tag = 'even' if i % 2 == 0 else 'odd'
-                self.tree.insert("", "end", values=[str(v) if v is not None else "" for v in row], tags=(tag,))
+                self.tree.insert("", "end", iid=str(row[0]),
+                                 values=[str(v) if v is not None else "" for v in row[1:]], tags=(tag,))
             self.tree.tag_configure('even', background=COLOR_BG_CARD)
             self.tree.tag_configure('odd', background=COLOR_BG_CARD_ALT)
             etiqueta = "RESULTADO" if filtro else "CLIENTE"
@@ -123,7 +124,7 @@ class FrameClientes:
     def editar(self):
         seleccion = self.tree.focus()
         if not seleccion: return messagebox.showwarning("Advertencia", "Seleccione un cliente.")
-        id_cliente = int(str(self.tree.item(seleccion, 'values')[0]).replace(',', ''))
+        id_cliente = int(seleccion)
         try:
             conn = conectar(); cursor = conn.cursor()
             cursor.execute("UPDATE Customers SET Name=?, LastName=?, Cellphone=? WHERE Id_Customer=?",
@@ -136,7 +137,7 @@ class FrameClientes:
     def eliminar(self):
         seleccion = self.tree.focus()
         if not seleccion: return messagebox.showwarning("Advertencia", "Seleccione un cliente.")
-        id_cliente = int(str(self.tree.item(seleccion, 'values')[0]).replace(',', ''))
+        id_cliente = int(seleccion)
         if messagebox.askyesno("Confirmar", "¿Eliminar cliente permanentemente?"):
             try:
                 conn = conectar(); cursor = conn.cursor()
@@ -153,4 +154,4 @@ class FrameClientes:
         if item:
             v = self.tree.item(item, 'values')
             self.limpiar()
-            self.entry_name.insert(0, v[1]); self.entry_lastname.insert(0, v[2]); self.entry_cellphone.insert(0, v[3])
+            self.entry_name.insert(0, v[0]); self.entry_lastname.insert(0, v[1]); self.entry_cellphone.insert(0, v[2])
