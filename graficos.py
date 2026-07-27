@@ -95,3 +95,66 @@ def dibujar_profesional(contenedor):
 
     except Exception as e:
         ctk.CTkLabel(contenedor, text=f"Fallo al cargar analíticas: {e}", text_color="#ef4444").pack(pady=30)
+
+
+def dibujar_productividad_semanal(contenedor, semanas=8):
+    for widget in contenedor.winfo_children(): widget.destroy()
+    try:
+        conn = conectar(); cursor = conn.cursor()
+        cursor.execute(
+            "SELECT DATEADD(WEEK, DATEDIFF(WEEK, 0, O.OrderDate), 0) AS Semana, "
+            "S.Worker, SUM(S.Price) "
+            "FROM Services S JOIN Orders O ON S.Id_Order = O.Id_Order "
+            "WHERE S.Price IS NOT NULL AND S.Worker IS NOT NULL "
+            "AND O.OrderDate >= DATEADD(WEEK, ?, CAST(GETDATE() AS DATE)) "
+            "GROUP BY DATEADD(WEEK, DATEDIFF(WEEK, 0, O.OrderDate), 0), S.Worker "
+            "ORDER BY Semana", (-(semanas - 1),))
+        filas = cursor.fetchall()
+        conn.close()
+
+        if not filas:
+            ctk.CTkLabel(contenedor, text="Sin datos suficientes para mostrar productividad semanal.",
+                         text_color=COLOR_TEXT_MAIN, font=("Segoe UI", 11)).pack(pady=30)
+            return
+
+        semanas_lista = sorted({row[0] for row in filas})
+        mecanicos = sorted({row[1] for row in filas})
+        datos = {mec: [0.0] * len(semanas_lista) for mec in mecanicos}
+        for semana, worker, total in filas:
+            datos[worker][semanas_lista.index(semana)] = float(total)
+
+        etiquetas_semana = [s.strftime("%d-%b") for s in semanas_lista]
+
+        plt.rcParams['text.color'] = COLOR_TEXT_MAIN
+        plt.rcParams['axes.labelcolor'] = COLOR_TEXT_MAIN
+        plt.rcParams['font.family'] = 'Segoe UI'
+
+        fig = Figure(figsize=(15, 4.6), dpi=100, facecolor=COLOR_BG_CARD)
+        ax = fig.add_subplot(111)
+        ax.set_facecolor(COLOR_BG_CARD)
+
+        x = list(range(len(semanas_lista)))
+        base = [0.0] * len(semanas_lista)
+        for i, mec in enumerate(mecanicos):
+            valores = datos[mec]
+            ax.bar(x, valores, bottom=base, label=mec, color=PALETA[i % len(PALETA)], width=0.55)
+            base = [b + v for b, v in zip(base, valores)]
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(etiquetas_semana, color=COLOR_TEXT_MAIN, fontsize=9)
+        ax.set_title("PRODUCTIVIDAD SEMANAL POR MECÁNICO", color=COLOR_TEXT_MAIN,
+                      fontweight="bold", fontsize=11, pad=14)
+        ax.tick_params(axis='y', colors=COLOR_TEXT_MAIN, labelsize=8)
+        ax.grid(axis='y', color=COLOR_BORDER, linewidth=0.6, alpha=0.6)
+        ax.set_axisbelow(True)
+        for s in ax.spines.values(): s.set_visible(False)
+        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=min(len(mecanicos), 5),
+                  fontsize=8, frameon=False, labelcolor=COLOR_TEXT_MAIN)
+
+        fig.tight_layout(pad=2.5)
+        canvas = FigureCanvasTkAgg(fig, master=contenedor)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=16, pady=16)
+
+    except Exception as e:
+        ctk.CTkLabel(contenedor, text=f"Fallo al cargar productividad semanal: {e}", text_color="#ef4444").pack(pady=30)

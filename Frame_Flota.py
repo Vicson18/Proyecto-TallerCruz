@@ -60,6 +60,10 @@ class FrameFlota:
         hacer_boton_accion(f_form_au, "REGISTRAR VEHÍCULO", COLOR_ACCENT, self.guardar, "＋").pack(fill="x", padx=24, pady=3)
         hacer_boton_accion(f_form_au, "ACTUALIZAR DATOS", "#1a3a1a", self.editar, "✎").pack(fill="x", padx=24, pady=3)
         hacer_boton_accion(f_form_au, "DAR DE BAJA", "#2a1010", self.eliminar, "✕").pack(fill="x", padx=24, pady=3)
+        ctk.CTkButton(f_form_au, text="LIMPIAR", fg_color="transparent", border_width=1,
+                      border_color=COLOR_BORDER, text_color=COLOR_TEXT_DIM, height=36,
+                      corner_radius=4, font=("Segoe UI", 11),
+                      command=self.limpiar).pack(fill="x", padx=24, pady=(10, 16))
 
         t_frame_au = ctk.CTkFrame(au_body, fg_color=COLOR_BG_CARD, corner_radius=6,
                                    border_width=1, border_color=COLOR_BORDER)

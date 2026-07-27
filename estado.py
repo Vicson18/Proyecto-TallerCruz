@@ -13,7 +13,7 @@ def actualizar_datos_precarga():
         lista_clientes_data = [(r[0], f"{r[1]} {r[2]} (ID:{r[0]})") for r in cursor.fetchall()]
         cursor.execute("SELECT VIN FROM Carts")
         lista_autos_vin = [r[0] for r in cursor.fetchall()]
-        cursor.execute("SELECT Id_Part, PartName, Stock, Price FROM Inventory")
+        cursor.execute("SELECT Id_Part, PartName, Stock, Price FROM Inventory WHERE IsDeleted = 0")
         lista_inventario_data = [(r[0], r[1], r[2], float(r[3])) for r in cursor.fetchall()]
         conn.close()
     except: pass

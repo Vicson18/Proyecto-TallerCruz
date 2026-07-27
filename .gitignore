@@ -37,3 +37,22 @@ Downloads/
 *.apk
 bin/
 obj/
+
+# =========================
+# Reportes/PDFs generados por la app (reportes.py)
+# =========================
+*.pdf
+
+# =========================
+# Logs y archivos temporales
+# =========================
+*.log
+*.tmp
+*.bak
+*.old
+
+# =========================
+# IDEs
+# =========================
+.idea/
+*.code-workspace

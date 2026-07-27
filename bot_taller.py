@@ -72,6 +72,15 @@ AYUDA = """Puedo responder estas consultas:
   • "servicios de [nombre]"
   • "cuándo se le hizo [trabajo] a [nombre]"
 
+📦 INVENTARIO
+  • "stock de [refacción]"
+  • "precio de [refacción]"
+  • "qué refacciones tienen poco stock"
+  • "cuántas refacciones hay"
+
+📋 ÓRDENES
+  • "detalle de la orden [número]"
+
 💰 FINANZAS
   • "cuánto hemos facturado"
   • "ganancias totales"
@@ -184,6 +193,45 @@ def db_mejor_mecanico():
     row = cursor.fetchone(); conn.close()
     return row
 
+def db_stock_parte(nombre):
+    conn = conectar(); cursor = conn.cursor()
+    cursor.execute("""SELECT PartName, Stock, Price FROM Inventory
+                      WHERE IsDeleted = 0 AND PartName LIKE ?
+                      ORDER BY PartName""", (f'%{nombre}%',))
+    rows = cursor.fetchall(); conn.close()
+    return rows
+
+def db_stock_bajo(umbral=3):
+    conn = conectar(); cursor = conn.cursor()
+    cursor.execute("""SELECT PartName, Stock FROM Inventory
+                      WHERE IsDeleted = 0 AND Stock <= ?
+                      ORDER BY Stock ASC""", (umbral,))
+    rows = cursor.fetchall(); conn.close()
+    return rows
+
+def db_total_inventario():
+    conn = conectar(); cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*), SUM(Stock) FROM Inventory WHERE IsDeleted = 0")
+    row = cursor.fetchone(); conn.close()
+    return row
+
+def db_orden_detalle(id_order):
+    conn = conectar(); cursor = conn.cursor()
+    cursor.execute("""SELECT O.Id_Order, Cu.Name, Cu.LastName, O.VIN, O.OrderDate, O.TotalAmount
+                      FROM Orders O JOIN Customers Cu ON O.Id_Customer = Cu.Id_Customer
+                      WHERE O.Id_Order = ?""", (id_order,))
+    orden = cursor.fetchone()
+    if not orden:
+        conn.close()
+        return None, []
+    cursor.execute("""SELECT COALESCE(I.PartName, 'Servicio general'), S.Duration, S.Price, S.Worker
+                      FROM Services S
+                      LEFT JOIN Inventory I ON S.Id_Part = I.Id_Part
+                      WHERE S.Id_Order = ?
+                      ORDER BY S.Id_Service""", (id_order,))
+    servicios = cursor.fetchall(); conn.close()
+    return orden, servicios
+
 def db_buscar_vin(vin):
     conn = conectar(); cursor = conn.cursor()
     cursor.execute("""SELECT C.VIN, C.Make, C.Model, C.ModelYear, C.Color,
@@ -214,6 +262,15 @@ INTENCIONES = [
                           "ultimo trabajo de", "que se le hizo a"]),
     ("HISTORIAL_VIN",    ["historial del vin", "historial vin", "servicios del vin",
                           "reparaciones del vin", "que le hicimos al vin"]),
+    ("ORDEN_DETALLE",    ["detalle de la orden", "detalle de orden", "total de la orden",
+                          "la orden numero", "orden numero", "ver la orden"]),
+    ("STOCK_BAJO",       ["poco stock", "stock bajo", "bajo stock", "refacciones agotandose",
+                          "refacciones por acabarse", "que se esta acabando", "que esta por acabarse"]),
+    ("TOTAL_INVENTARIO", ["cuantas refacciones hay", "total de refacciones", "refacciones tenemos",
+                          "cuantas piezas hay", "inventario total", "cuanto inventario hay"]),
+    ("PRECIO_PARTE",     ["precio de", "cuanto cuesta", "cuanto vale"]),
+    ("STOCK_PARTE",      ["stock de", "cuantas hay de", "hay stock de", "cuanto stock hay de",
+                          "cuanto hay de", "cuantas quedan de"]),
     ("SERVICIOS_CLI",    ["servicios de", "reparaciones de", "historial de",
                           "trabajos de", "que servicios tiene"]),
     ("AUTOS_CLIENTE",    ["que autos tiene", "autos de", "vehiculos de",
@@ -279,6 +336,71 @@ def procesar_lenguaje_natural(texto_usuario):
         elif intencion == "TOTAL_AUTOS":
             n = db_total_autos()
             return f"🚗 Hay {n} vehículo(s) registrados en la flota."
+
+        # ── INVENTARIO ────────────────────────────────────────
+        elif intencion == "TOTAL_INVENTARIO":
+            total_partes, total_stock = db_total_inventario()
+            total_stock = total_stock or 0
+            return (f"📦 Hay {total_partes} refacción(es) registrada(s) en inventario, "
+                    f"con {total_stock} unidad(es) en stock en total.")
+
+        elif intencion == "STOCK_BAJO":
+            rows = db_stock_bajo()
+            if not rows:
+                return "✅ No hay refacciones con poco stock (todas tienen más de 3 unidades disponibles)."
+            resp = "⚠️ Refacciones con poco stock:\n"
+            for nombre, stock in rows:
+                resp += f"   📦 {nombre} — quedan {stock} unidad(es)\n"
+            return resp.strip()
+
+        elif intencion == "STOCK_PARTE":
+            parte = extraer_nombre(texto_norm, [clave])
+            if not parte:
+                return "¿De qué refacción? Ejemplo: 'stock de balata delantera'"
+            rows = db_stock_parte(parte)
+            if not rows:
+                return f"No encontré ninguna refacción llamada '{parte.title()}' en inventario."
+            resp = f"📦 Stock de refacciones que coinciden con '{parte.title()}':\n"
+            for nombre, stock, precio in rows:
+                resp += f"   • {nombre} — {stock} unidad(es) disponibles — ${float(precio):,.2f} c/u\n"
+            return resp.strip()
+
+        elif intencion == "PRECIO_PARTE":
+            parte = extraer_nombre(texto_norm, [clave])
+            if not parte:
+                return "¿De qué refacción? Ejemplo: 'precio de balata delantera'"
+            rows = db_stock_parte(parte)
+            if not rows:
+                return f"No encontré ninguna refacción llamada '{parte.title()}' en inventario."
+            resp = f"💲 Precio de refacciones que coinciden con '{parte.title()}':\n"
+            for nombre, stock, precio in rows:
+                resp += f"   • {nombre} — ${float(precio):,.2f} (stock disponible: {stock})\n"
+            return resp.strip()
+
+        # ── ÓRDENES ───────────────────────────────────────────
+        elif intencion == "ORDEN_DETALLE":
+            m = re.search(r"(\d+)", texto_norm)
+            if not m:
+                return "¿Cuál es el número de orden? Ejemplo: 'detalle de la orden 12'"
+            id_order = int(m.group(1))
+            orden, servicios = db_orden_detalle(id_order)
+            if not orden:
+                return f"No encontré ninguna orden con el número {id_order}."
+            total = orden[5] if orden[5] is not None else 0
+            vin_txt = orden[3] or "sin vehículo asociado"
+            resp = (f"📋 Orden #{orden[0]}\n"
+                    f"   Cliente: {orden[1]} {orden[2]}\n"
+                    f"   VIN: {vin_txt}\n"
+                    f"   Fecha: {formato_fecha(orden[4])}\n"
+                    f"   Total: ${total:,.2f}\n")
+            if servicios:
+                resp += "   Servicios:\n"
+                for nombre, duracion, precio, worker in servicios:
+                    precio_txt = f"${float(precio):,.2f}" if precio is not None else "$0.00"
+                    resp += f"      🔧 {nombre} | {duracion or '—'} | {precio_txt} | {worker}\n"
+            else:
+                resp += "   Sin servicios registrados todavía.\n"
+            return resp.strip()
 
         # ── SERVICIO ESPECÍFICO ("cuándo se le hizo X a Y") ──
         elif intencion == "SERVICIO_ESP":

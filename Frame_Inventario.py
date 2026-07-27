@@ -49,6 +49,7 @@ class FrameInventario:
         self.entry_partname = self._campo(f_form_inv, "NOMBRE DE LA REFACCIÓN", "Ej: Balata delantera")
         self.entry_stock = self._campo(f_form_inv, "STOCK DISPONIBLE", "0")
         self.entry_price = self._campo(f_form_inv, "PRECIO ($)", "0.00")
+        self.entry_duration = self._campo(f_form_inv, "DURACIÓN ESTÁNDAR DEL TRABAJO", "Ej: 5 Horas")
 
         self.lbl_sel = ctk.CTkLabel(f_form_inv, text="Ninguna refacción seleccionada",
                                      font=("Segoe UI", 10, "bold"), text_color=COLOR_TEXT_DIM,
@@ -74,12 +75,12 @@ class FrameInventario:
         self.buscar_entry.pack(side="left", expand=True, fill="x")
         self.buscar_entry.bind("<KeyRelease>", lambda e: self.cargar(self.buscar_entry.get().strip()))
 
-        self.tree = ttk.Treeview(t_frame_inv, columns=("Refacción", "Stock", "Precio"), show="headings")
-        encabezados = [("Refacción", "REFACCIÓN", 260),
-                       ("Stock", "STOCK", 100), ("Precio", "PRECIO", 120)]
+        self.tree = ttk.Treeview(t_frame_inv, columns=("Refacción", "Stock", "Precio", "Duración"), show="headings")
+        encabezados = [("Refacción", "REFACCIÓN", 240), ("Stock", "STOCK", 90),
+                       ("Precio", "PRECIO", 110), ("Duración", "DURACIÓN ESTÁNDAR", 150)]
         for c, txt, w in encabezados:
             self.tree.heading(c, text=txt)
-            self.tree.column(c, width=w, anchor="center" if c in ("Stock", "Precio") else "w")
+            self.tree.column(c, width=w, anchor="center" if c in ("Stock", "Precio", "Duración") else "w")
         self.tree.pack(expand=True, fill="both", padx=2, pady=(0, 2))
         self.tree.bind("<ButtonRelease-1>", self.seleccionar)
 
@@ -95,15 +96,18 @@ class FrameInventario:
             conn = conectar(); cursor = conn.cursor()
             if filtro:
                 cursor.execute(
-                    "SELECT Id_Part, PartName, Stock, Price FROM Inventory WHERE PartName LIKE ? ORDER BY PartName",
+                    "SELECT Id_Part, PartName, Stock, Price, Duration FROM Inventory "
+                    "WHERE IsDeleted = 0 AND PartName LIKE ? ORDER BY PartName",
                     (f"%{filtro}%",))
             else:
-                cursor.execute("SELECT Id_Part, PartName, Stock, Price FROM Inventory ORDER BY PartName")
+                cursor.execute("SELECT Id_Part, PartName, Stock, Price, Duration FROM Inventory "
+                                "WHERE IsDeleted = 0 ORDER BY PartName")
             filas = cursor.fetchall()
             for i, row in enumerate(filas):
                 tag = 'even' if i % 2 == 0 else 'odd'
                 precio = f"{row[3]:,.2f}"
-                self.tree.insert("", "end", iid=str(row[0]), values=(row[1], row[2], precio), tags=(tag,))
+                duracion = row[4] or "—"
+                self.tree.insert("", "end", iid=str(row[0]), values=(row[1], row[2], precio, duracion), tags=(tag,))
             self.tree.tag_configure('even', background=COLOR_BG_CARD)
             self.tree.tag_configure('odd', background=COLOR_BG_CARD_ALT)
             etiqueta = "RESULTADO" if filtro else "REFACCIÓN"
@@ -125,15 +129,17 @@ class FrameInventario:
             precio = float(precio_txt)
         except ValueError:
             return None, "El precio debe ser un número válido, ej: 250.00."
-        return (nombre, stock, precio), None
+        duracion = self.entry_duration.get().strip() or None
+        return (nombre, stock, precio, duracion), None
 
     def guardar(self):
         datos, error = self._validar_datos()
         if error: return messagebox.showwarning("Error", error)
-        nombre, stock, precio = datos
+        nombre, stock, precio, duracion = datos
         try:
             conn = conectar(); cursor = conn.cursor()
-            cursor.execute("INSERT INTO Inventory (PartName, Stock, Price) VALUES (?,?,?)", (nombre, stock, precio))
+            cursor.execute("INSERT INTO Inventory (PartName, Stock, Price, Duration) VALUES (?,?,?,?)",
+                           (nombre, stock, precio, duracion))
             conn.commit(); conn.close()
             estado.actualizar_datos_precarga()
             self.cargar(); self.limpiar()
@@ -145,11 +151,11 @@ class FrameInventario:
             return messagebox.showwarning("Advertencia", "Selecciona una refacción de la tabla.")
         datos, error = self._validar_datos()
         if error: return messagebox.showwarning("Error", error)
-        nombre, stock, precio = datos
+        nombre, stock, precio, duracion = datos
         try:
             conn = conectar(); cursor = conn.cursor()
-            cursor.execute("UPDATE Inventory SET PartName=?, Stock=?, Price=? WHERE Id_Part=?",
-                           (nombre, stock, precio, self.id_part_actual))
+            cursor.execute("UPDATE Inventory SET PartName=?, Stock=?, Price=?, Duration=? WHERE Id_Part=?",
+                           (nombre, stock, precio, duracion, self.id_part_actual))
             conn.commit(); conn.close()
             estado.actualizar_datos_precarga()
             self.cargar(); self.limpiar()
@@ -159,18 +165,23 @@ class FrameInventario:
     def eliminar(self):
         if not self.id_part_actual:
             return messagebox.showwarning("Advertencia", "Selecciona una refacción de la tabla.")
-        if messagebox.askyesno("Confirmar", "¿Eliminar esta refacción del inventario?"):
+        if messagebox.askyesno(
+                "Confirmar",
+                "¿Dar de baja esta refacción del inventario?\n"
+                "Dejará de estar disponible para nuevos servicios, pero los servicios "
+                "que ya la usaron conservarán su registro tal cual."):
             try:
                 conn = conectar(); cursor = conn.cursor()
-                cursor.execute("DELETE FROM Inventory WHERE Id_Part=?", (self.id_part_actual,))
+                cursor.execute("UPDATE Inventory SET IsDeleted = 1 WHERE Id_Part=?", (self.id_part_actual,))
                 conn.commit(); conn.close()
                 estado.actualizar_datos_precarga()
                 self.cargar(); self.limpiar()
-            except Exception:
-                messagebox.showerror("Error", "No se puede eliminar (la refacción está usada en servicios registrados).")
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
 
     def limpiar(self):
         self.entry_partname.delete(0, 'end'); self.entry_stock.delete(0, 'end'); self.entry_price.delete(0, 'end')
+        self.entry_duration.delete(0, 'end')
         self.id_part_actual = None
         self.lbl_sel.configure(text="Ninguna refacción seleccionada")
 
@@ -179,8 +190,11 @@ class FrameInventario:
         if seleccion:
             valores = self.tree.item(seleccion, 'values')
             self.entry_partname.delete(0, 'end'); self.entry_stock.delete(0, 'end'); self.entry_price.delete(0, 'end')
+            self.entry_duration.delete(0, 'end')
             self.id_part_actual = int(seleccion)
             self.entry_partname.insert(0, valores[0])
             self.entry_stock.insert(0, str(valores[1]))
             self.entry_price.insert(0, str(valores[2]).replace(',', ''))
+            if valores[3] and valores[3] != "—":
+                self.entry_duration.insert(0, valores[3])
             self.lbl_sel.configure(text=f"Editando refacción #{self.id_part_actual}")

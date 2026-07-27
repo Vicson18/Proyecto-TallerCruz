@@ -13,12 +13,25 @@ BIENVENIDA = (
     "Puedo consultar la base de datos por ti. Ejemplos:\n"
     "  • ultimo servicio de Juan\n"
     "  • que autos tiene Carlos\n"
+    "  • stock de bujias\n"
     "  • cuanto hemos facturado\n"
     "  • quien es el mejor mecanico\n\n"
-    "Escribe 'ayuda' para ver todos los comandos."
+    "También puedes usar los botones de abajo, o escribir 'ayuda' para ver todos los comandos."
 )
 
 DOTS_ANIM = ["●  ∙  ∙", "∙  ●  ∙", "∙  ∙  ●"]
+
+# Consultas de un clic para quien no recuerda la frase exacta — cubren los
+# mismos datos que ya se registran en el resto de la app (clientes, flota,
+# inventario, facturación) sin necesitar escribir nada.
+SUGERENCIAS_RAPIDAS = [
+    ("📦 Stock bajo", "que refacciones tienen poco stock"),
+    ("📊 Inventario", "cuantas refacciones hay"),
+    ("💰 Facturación", "cuanto hemos facturado"),
+    ("🏆 Mejor mecánico", "quien es el mejor mecanico"),
+    ("👥 Clientes", "cuantos clientes hay"),
+    ("🚗 Vehículos", "cuantos autos hay"),
+]
 
 
 class FrameIA:
@@ -56,6 +69,18 @@ class FrameIA:
         ctk.CTkLabel(estado_f, text="●", font=("Segoe UI", 11), text_color=COLOR_SUCCESS).pack(side="left", padx=(0, 4))
         ctk.CTkLabel(estado_f, text="En línea", font=("Segoe UI", 11, "bold"), text_color=COLOR_TEXT_DIM).pack(side="left")
 
+        ctk.CTkFrame(f_chat, fg_color=COLOR_BORDER, height=1, corner_radius=0).pack(fill="x")
+
+        sugerencias_row = ctk.CTkFrame(f_chat, fg_color=COLOR_BG_CARD_ALT)
+        sugerencias_row.pack(fill="x")
+        ctk.CTkLabel(sugerencias_row, text="PRUEBA CON:", font=("Segoe UI", 9, "bold"),
+                     text_color=COLOR_TEXT_DIM).pack(side="left", padx=(16, 8), pady=8)
+        for texto_boton, consulta in SUGERENCIAS_RAPIDAS:
+            ctk.CTkButton(sugerencias_row, text=texto_boton, fg_color="transparent",
+                          border_width=1, border_color=COLOR_BORDER, text_color=COLOR_TEXT_MAIN,
+                          hover_color=COLOR_ACCENT_DIM, height=28, corner_radius=14,
+                          font=("Segoe UI", 10),
+                          command=lambda q=consulta: self.enviar_sugerencia(q)).pack(side="left", padx=(0, 6), pady=8)
         ctk.CTkFrame(f_chat, fg_color=COLOR_BORDER, height=1, corner_radius=0).pack(fill="x")
 
         self.chat_scroll = ctk.CTkScrollableFrame(f_chat, fg_color="#0d0d0d", corner_radius=0)
@@ -164,6 +189,12 @@ class FrameIA:
             self.typing_fila.destroy()
         self.typing_fila = None
         self.typing_label = None
+
+    def enviar_sugerencia(self, consulta):
+        if self.entry_chat.cget("state") == "disabled": return
+        self.entry_chat.delete(0, "end")
+        self.entry_chat.insert(0, consulta)
+        self.enviar_mensaje_chat()
 
     def enviar_mensaje_chat(self, event=None):
         if self.entry_chat.cget("state") == "disabled": return

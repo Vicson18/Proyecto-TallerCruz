@@ -15,6 +15,9 @@ class FrameOrdenes:
         self.id_part_seleccionado = None
         self.inventario_map = {}
         self.servicios_pendientes = []
+        self.cantidad_servicio = 1
+        self.precio_unitario_actual = None
+        self.servicio_editando = None
         self.build(parent)
         self.cargar_ordenes()
         self._cargar_inventario_combo()
@@ -83,6 +86,10 @@ class FrameOrdenes:
                       border_width=1, border_color=COLOR_ACCENT2, text_color=COLOR_ACCENT2,
                       height=42, corner_radius=4, font=("Segoe UI", 12, "bold"),
                       command=self.pedir_ticket_pdf).pack(fill="x", padx=20, pady=3)
+        ctk.CTkButton(f_form, text="LIMPIAR", fg_color="transparent", border_width=1,
+                      border_color=COLOR_BORDER, text_color=COLOR_TEXT_DIM, height=36,
+                      corner_radius=4, font=("Segoe UI", 11),
+                      command=self.limpiar_form_orden).pack(fill="x", padx=20, pady=(10, 3))
 
         ctk.CTkFrame(f_form, fg_color=COLOR_BORDER, height=1).pack(fill="x", padx=20, pady=14)
         ctk.CTkLabel(f_form, text="ORDEN ACTIVA", **LABEL_STYLE).pack(anchor="w", padx=20)
@@ -134,13 +141,39 @@ class FrameOrdenes:
         self.entry_parte.pack(padx=20, pady=(2, 0))
         self.entry_parte.bind("<KeyRelease>", self.al_escribir_parte)
 
+        f_cantidad = ctk.CTkFrame(f_form, fg_color="transparent")
+        f_cantidad.pack(padx=20, pady=(6, 0), fill="x")
+        ctk.CTkLabel(f_cantidad, text="CANTIDAD", **LABEL_STYLE).pack(anchor="w")
+        f_cantidad_ctrl = ctk.CTkFrame(f_cantidad, fg_color="transparent")
+        f_cantidad_ctrl.pack(anchor="w", pady=(2, 0))
+        ctk.CTkButton(f_cantidad_ctrl, text="－", width=36, height=36, corner_radius=4,
+                      fg_color=COLOR_BG_CARD_ALT, hover_color=COLOR_ACCENT_DIM,
+                      text_color=COLOR_TEXT_MAIN, font=("Segoe UI", 14, "bold"),
+                      command=self.decrementar_cantidad).pack(side="left")
+        self.lbl_cantidad = ctk.CTkLabel(f_cantidad_ctrl, text="1", width=50, height=36,
+                                          font=("Segoe UI", 14, "bold"), text_color=COLOR_TEXT_MAIN)
+        self.lbl_cantidad.pack(side="left", padx=4)
+        ctk.CTkButton(f_cantidad_ctrl, text="＋", width=36, height=36, corner_radius=4,
+                      fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_DIM,
+                      text_color=COLOR_TEXT_MAIN, font=("Segoe UI", 14, "bold"),
+                      command=self.incrementar_cantidad).pack(side="left")
+
         self.entry_duration = self._campo(f_form, "TIEMPO ESTIMADO", "Ej: 3 Horas")
         self.entry_price = self._campo(f_form, "COSTO ($)", "0.00")
         self.entry_worker = self._campo(f_form, "MECÁNICO ASIGNADO", "Nombre del mecánico")
 
+        self.lbl_editando_servicio = ctk.CTkLabel(f_form, text="", font=("Segoe UI", 10, "bold"),
+                                                   text_color=COLOR_ACCENT2, wraplength=280, justify="left")
+        self.lbl_editando_servicio.pack(anchor="w", padx=20, pady=(4, 0))
+
         ctk.CTkFrame(f_form, fg_color=COLOR_BORDER, height=1).pack(fill="x", padx=20, pady=14)
         hacer_boton_accion(f_form, "AGREGAR A LA LISTA", COLOR_ACCENT, self.agregar_servicio, "＋").pack(fill="x", padx=20, pady=3)
+        hacer_boton_accion(f_form, "GUARDAR CAMBIOS", "#1a3a1a", self.guardar_cambios_servicio, "✎").pack(fill="x", padx=20, pady=3)
         hacer_boton_accion(f_form, "QUITAR SELECCIONADO", "#2a1010", self.eliminar_servicio, "✕").pack(fill="x", padx=20, pady=3)
+        ctk.CTkButton(f_form, text="LIMPIAR", fg_color="transparent", border_width=1,
+                      border_color=COLOR_BORDER, text_color=COLOR_TEXT_DIM, height=36,
+                      corner_radius=4, font=("Segoe UI", 11),
+                      command=self._limpiar_form_servicio).pack(fill="x", padx=20, pady=(3, 0))
 
         ctk.CTkFrame(f_form, fg_color=COLOR_BORDER, height=1).pack(fill="x", padx=20, pady=14)
         self.lbl_pendientes = ctk.CTkLabel(f_form, text="Sin servicios pendientes por guardar",
@@ -165,6 +198,7 @@ class FrameOrdenes:
             self.tree_servicios.heading(c, text=txt)
             self.tree_servicios.column(c, width=w, anchor="center" if c in ("Duración", "Precio", "Fecha") else "w")
         self.tree_servicios.pack(expand=True, fill="both", padx=2, pady=(0, 2))
+        self.tree_servicios.bind("<ButtonRelease-1>", self.seleccionar_servicio)
 
     def _campo(self, parent, lbl, ph):
         ctk.CTkLabel(parent, text=lbl, **LABEL_STYLE).pack(anchor="w", padx=20, pady=(6, 0))
@@ -199,6 +233,10 @@ class FrameOrdenes:
             self.lbl_total.configure(text=f"{len(filas)} {etiqueta}{'S' if len(filas) != 1 else ''}")
             conn.close()
         except Exception as e: print(e)
+
+    def limpiar_form_orden(self):
+        self.search_customer.delete(0, 'end')
+        self.search_vin.delete(0, 'end')
 
     def _vin_existe(self, vin):
         conn = conectar(); cursor = conn.cursor()
@@ -244,17 +282,22 @@ class FrameOrdenes:
     def eliminar_orden(self):
         if not self.orden_actual:
             return messagebox.showwarning("Advertencia", "Selecciona una orden de la tabla.")
-        if not messagebox.askyesno(
-                "Confirmar",
-                f"¿Eliminar la orden #{self.orden_actual} y todos sus servicios?\n"
-                "El stock consumido se devolverá al inventario."):
+        respuesta = messagebox.askyesnocancel(
+            "Confirmar eliminación",
+            f"¿Eliminar la orden #{self.orden_actual} y todos sus servicios?\n\n"
+            "¿Quieres que las refacciones usadas regresen al inventario?\n\n"
+            "Sí = eliminar y devolver refacciones al stock.\n"
+            "No = eliminar sin devolver refacciones.\n"
+            "Cancelar = no eliminar la orden.")
+        if respuesta is None:
             return
         try:
             conn = conectar(); cursor = conn.cursor()
-            cursor.execute("SELECT Id_Part FROM Services WHERE Id_Order = ? AND Id_Part IS NOT NULL", (self.orden_actual,))
-            partes = [r[0] for r in cursor.fetchall()]
-            for id_part in partes:
-                cursor.execute("UPDATE Inventory SET Stock = Stock + 1 WHERE Id_Part = ?", (id_part,))
+            if respuesta:
+                cursor.execute("SELECT Id_Part FROM Services WHERE Id_Order = ? AND Id_Part IS NOT NULL", (self.orden_actual,))
+                partes = [r[0] for r in cursor.fetchall()]
+                for id_part in partes:
+                    cursor.execute("UPDATE Inventory SET Stock = Stock + 1 WHERE Id_Part = ?", (id_part,))
             cursor.execute("DELETE FROM Services WHERE Id_Order = ?", (self.orden_actual,))
             cursor.execute("DELETE FROM Orders WHERE Id_Order = ?", (self.orden_actual,))
             conn.commit(); conn.close()
@@ -301,17 +344,66 @@ class FrameOrdenes:
     def _cargar_inventario_combo(self):
         try:
             conn = conectar(); cursor = conn.cursor()
-            cursor.execute("SELECT Id_Part, PartName, Stock, Price FROM Inventory ORDER BY PartName")
+            cursor.execute("SELECT Id_Part, PartName, Stock, Price, Duration FROM Inventory "
+                            "WHERE IsDeleted = 0 ORDER BY PartName")
             filas = cursor.fetchall(); conn.close()
         except Exception as e:
             print(e); filas = []
-        self.inventario_map = {r[1].strip().lower(): (r[0], float(r[3])) for r in filas}
+        self.inventario_map = {r[1].strip().lower(): (r[0], float(r[3]), r[4]) for r in filas}
         self.entry_parte.delete(0, 'end')
         self.id_part_seleccionado = None
 
     def al_escribir_parte(self, event):
         mostrar_autocomplete(self.entry_parte, "parte")
+        self._set_cantidad(1)
         self._sincronizar_parte(autofill_precio=True)
+
+    def _set_cantidad(self, valor):
+        self.cantidad_servicio = valor
+        self.lbl_cantidad.configure(text=str(valor))
+
+    def _actualizar_costo_mostrado(self):
+        """Refleja en el campo COSTO el precio unitario de inventario
+        multiplicado por la cantidad seleccionada."""
+        if self.precio_unitario_actual is None:
+            return
+        total = self.precio_unitario_actual * self.cantidad_servicio
+        self.entry_price.delete(0, 'end')
+        self.entry_price.insert(0, f"{total:.2f}")
+
+    def _stock_disponible_restante(self):
+        """Stock disponible de la refacción seleccionada, descontando lo que
+        ya está en la lista de pendientes (sin contar la cantidad que se está
+        por agregar)."""
+        if not self.id_part_seleccionado:
+            return 0
+        try:
+            conn = conectar(); cursor = conn.cursor()
+            cursor.execute("SELECT Stock FROM Inventory WHERE Id_Part = ?", (self.id_part_seleccionado,))
+            fila = cursor.fetchone(); conn.close()
+        except Exception:
+            fila = None
+        stock_actual = fila[0] if fila else 0
+        usado_pendiente = sum(1 for s in self.servicios_pendientes if s["id_part"] == self.id_part_seleccionado)
+        return stock_actual - usado_pendiente
+
+    def incrementar_cantidad(self):
+        self._sincronizar_parte(autofill_precio=False)
+        if not self.id_part_seleccionado:
+            return messagebox.showwarning(
+                "Error", "Escribe primero el nombre de una refacción registrada en INVENTARIO.")
+        disponible = self._stock_disponible_restante()
+        if self.cantidad_servicio >= disponible:
+            return messagebox.showwarning(
+                "Sin stock",
+                f"No hay más stock disponible (disponible: {disponible}).")
+        self._set_cantidad(self.cantidad_servicio + 1)
+        self._actualizar_costo_mostrado()
+
+    def decrementar_cantidad(self):
+        if self.cantidad_servicio > 1:
+            self._set_cantidad(self.cantidad_servicio - 1)
+            self._actualizar_costo_mostrado()
 
     def _sincronizar_parte(self, autofill_precio=False):
         """Busca coincidencia exacta (sin importar mayúsculas) entre lo tecleado
@@ -320,12 +412,20 @@ class FrameOrdenes:
         texto = self.entry_parte.get().strip().lower()
         datos = self.inventario_map.get(texto)
         if datos:
-            id_part, precio = datos
+            id_part, precio, duracion = datos
             self.id_part_seleccionado = id_part
+            self.precio_unitario_actual = precio
             if autofill_precio:
-                self.entry_price.delete(0, 'end'); self.entry_price.insert(0, f"{precio:.2f}")
+                self._actualizar_costo_mostrado()
+                # La duración es el tiempo estándar del trabajo completo (p.ej.
+                # "cambiar el juego de bujías"), no depende de la cantidad de
+                # unidades, así que no se multiplica por self.cantidad_servicio.
+                self.entry_duration.delete(0, 'end')
+                if duracion:
+                    self.entry_duration.insert(0, duracion)
         else:
             self.id_part_seleccionado = None
+            self.precio_unitario_actual = None
 
     def cargar_servicios(self):
         for row in self.tree_servicios.get_children(): self.tree_servicios.delete(row)
@@ -397,7 +497,7 @@ class FrameOrdenes:
             return messagebox.showwarning(
                 "Error", "Esa refacción no está registrada en INVENTARIO.\n"
                 "Escribe el nombre exacto de una refacción existente o regístrala primero en la pestaña INVENTARIO.")
-        precio, error_precio = self._limpiar_precio(self.entry_price.get())
+        precio_total, error_precio = self._limpiar_precio(self.entry_price.get())
         if error_precio: return messagebox.showwarning("Error", error_precio)
         worker = self.entry_worker.get().strip()
         if not worker: return messagebox.showwarning("Error", "El mecánico asignado es obligatorio.")
@@ -411,16 +511,22 @@ class FrameOrdenes:
         if not fila:
             return messagebox.showwarning("Error", "La refacción ya no existe en inventario.")
         part_name, stock_actual = fila
+        cantidad = max(1, self.cantidad_servicio)
         usado_pendiente = sum(1 for s in self.servicios_pendientes if s["id_part"] == self.id_part_seleccionado)
-        if usado_pendiente >= stock_actual:
+        if usado_pendiente + cantidad > stock_actual:
             return messagebox.showwarning(
                 "Sin stock",
-                f"No hay más stock disponible de '{part_name}' (disponible: {stock_actual}, "
-                f"ya tienes {usado_pendiente} en la lista sin guardar).")
-        self.servicios_pendientes.append({
-            "id_part": self.id_part_seleccionado, "part_name": part_name,
-            "duration": self.entry_duration.get(), "price": precio, "worker": worker,
-        })
+                f"No hay suficiente stock de '{part_name}' para agregar {cantidad} unidad(es) "
+                f"(disponible: {stock_actual}, ya tienes {usado_pendiente} en la lista sin guardar).")
+        # El campo COSTO muestra el total (precio unitario x cantidad); cada
+        # fila guardada en Services representa 1 unidad, así que se reparte
+        # el total entre la cantidad para guardar el costo por unidad.
+        precio_unitario_guardar = round(precio_total / cantidad, 2) if precio_total is not None else None
+        for _ in range(cantidad):
+            self.servicios_pendientes.append({
+                "id_part": self.id_part_seleccionado, "part_name": part_name,
+                "duration": self.entry_duration.get(), "price": precio_unitario_guardar, "worker": worker,
+            })
         self.cargar_servicios()
         self._limpiar_form_servicio()
 
@@ -486,8 +592,9 @@ class FrameOrdenes:
             cursor.execute("DELETE FROM Services WHERE Id_Service = ?", (id_service,))
             conn.commit(); conn.close()
             estado.actualizar_datos_precarga()
-            self._activar_orden(self.orden_actual)
+            self._refrescar_orden_activa()
             self.cargar_ordenes()
+            self._limpiar_form_servicio()
         except Exception as e: messagebox.showerror("Error", str(e))
 
     def _limpiar_form_servicio(self):
@@ -496,6 +603,156 @@ class FrameOrdenes:
         self.entry_price.delete(0, 'end')
         self.entry_worker.delete(0, 'end')
         self.id_part_seleccionado = None
+        self.precio_unitario_actual = None
+        self.servicio_editando = None
+        self.lbl_editando_servicio.configure(text="")
+        self._set_cantidad(1)
+
+    def _refrescar_orden_activa(self):
+        """Actualiza el total mostrado de la orden activa y la tabla de
+        servicios sin tocar self.servicios_pendientes (a diferencia de
+        _activar_orden, que los descarta)."""
+        try:
+            conn = conectar(); cursor = conn.cursor()
+            cursor.execute("""SELECT O.Id_Order, Cu.Name, Cu.LastName, O.VIN, O.TotalAmount
+                              FROM Orders O JOIN Customers Cu ON O.Id_Customer = Cu.Id_Customer
+                              WHERE O.Id_Order = ?""", (self.orden_actual,))
+            row = cursor.fetchone(); conn.close()
+        except Exception:
+            row = None
+        if row:
+            vin_txt = row[3] or "sin vehículo asociado"
+            total = row[4] if row[4] is not None else 0
+            texto = f"Orden #{row[0]}\n{row[1]} {row[2]}\nVIN: {vin_txt}\nTotal: ${total:,.2f}"
+            self.lbl_orden_activa.configure(text=texto)
+            self.lbl_orden_activa_2.configure(text=texto)
+        self.cargar_servicios()
+
+    def seleccionar_servicio(self, event):
+        """Al seleccionar un servicio (pendiente o ya guardado) en la tabla,
+        carga sus datos en el formulario para poder editarlo con
+        GUARDAR CAMBIOS."""
+        seleccion = self.tree_servicios.focus()
+        if not seleccion:
+            return
+        if seleccion.startswith("pend-"):
+            idx = int(seleccion.split("-", 1)[1])
+            if not (0 <= idx < len(self.servicios_pendientes)): return
+            s = self.servicios_pendientes[idx]
+            self._limpiar_form_servicio()
+            self.servicio_editando = ("pend", idx)
+            self.entry_parte.insert(0, s["part_name"])
+            self.entry_duration.insert(0, s["duration"] or "")
+            if s["price"] is not None: self.entry_price.insert(0, f"{s['price']:.2f}")
+            self.entry_worker.insert(0, s["worker"] or "")
+            self.id_part_seleccionado = s["id_part"]
+            self.precio_unitario_actual = s["price"]
+            self.lbl_editando_servicio.configure(text=f"✎ Editando servicio pendiente (fila {idx + 1})")
+        elif seleccion.startswith("db-"):
+            id_service = int(seleccion.split("-", 1)[1])
+            try:
+                conn = conectar(); cursor = conn.cursor()
+                cursor.execute("""SELECT S.Id_Part, COALESCE(I.PartName, 'Sin refacción'), S.Duration,
+                                         S.Price, S.Worker
+                                  FROM Services S
+                                  LEFT JOIN Inventory I ON S.Id_Part = I.Id_Part
+                                  WHERE S.Id_Service = ?""", (id_service,))
+                fila = cursor.fetchone(); conn.close()
+            except Exception as e:
+                return messagebox.showerror("Error", str(e))
+            if not fila:
+                return
+            id_part, part_name, duration, price, worker = fila
+            self._limpiar_form_servicio()
+            self.servicio_editando = ("db", id_service, id_part, price)
+            self.entry_parte.insert(0, part_name)
+            self.entry_duration.insert(0, duration or "")
+            if price is not None: self.entry_price.insert(0, f"{price:.2f}")
+            self.entry_worker.insert(0, worker or "")
+            self.id_part_seleccionado = id_part
+            self.precio_unitario_actual = price
+            self.lbl_editando_servicio.configure(text=f"✎ Editando servicio guardado #{id_service}")
+
+    def guardar_cambios_servicio(self):
+        """Aplica los cambios hechos en el formulario al servicio seleccionado
+        con seleccionar_servicio (pendiente o ya guardado en la BD)."""
+        if not self.servicio_editando:
+            return messagebox.showwarning(
+                "Advertencia", "Selecciona un servicio de la tabla (haciendo clic en él) para editarlo.")
+        self._sincronizar_parte(autofill_precio=False)
+        if not self.id_part_seleccionado:
+            return messagebox.showwarning(
+                "Error", "Esa refacción no está registrada en INVENTARIO.\n"
+                "Escribe el nombre exacto de una refacción existente o regístrala primero en la pestaña INVENTARIO.")
+        precio_total, error_precio = self._limpiar_precio(self.entry_price.get())
+        if error_precio: return messagebox.showwarning("Error", error_precio)
+        worker = self.entry_worker.get().strip()
+        if not worker: return messagebox.showwarning("Error", "El mecánico asignado es obligatorio.")
+        duration = self.entry_duration.get().strip()
+        cantidad = max(1, self.cantidad_servicio)
+        precio_unitario_guardar = round(precio_total / cantidad, 2) if precio_total is not None else None
+
+        tipo = self.servicio_editando[0]
+        if tipo == "pend":
+            idx = self.servicio_editando[1]
+            if not (0 <= idx < len(self.servicios_pendientes)):
+                self.servicio_editando = None
+                return messagebox.showwarning("Error", "Ese servicio pendiente ya no existe.")
+            id_part_original = self.servicios_pendientes[idx]["id_part"]
+            try:
+                conn = conectar(); cursor = conn.cursor()
+                cursor.execute("SELECT PartName, Stock FROM Inventory WHERE Id_Part = ?", (self.id_part_seleccionado,))
+                fila = cursor.fetchone(); conn.close()
+            except Exception as e:
+                return messagebox.showerror("Error", str(e))
+            if not fila:
+                return messagebox.showwarning("Error", "La refacción ya no existe en inventario.")
+            part_name, stock_actual = fila
+            if self.id_part_seleccionado != id_part_original:
+                usado_pendiente = sum(1 for i, s in enumerate(self.servicios_pendientes)
+                                       if i != idx and s["id_part"] == self.id_part_seleccionado)
+                if usado_pendiente + 1 > stock_actual:
+                    return messagebox.showwarning(
+                        "Sin stock", f"No hay stock disponible de '{part_name}' para hacer este cambio.")
+            self.servicios_pendientes[idx] = {
+                "id_part": self.id_part_seleccionado, "part_name": part_name,
+                "duration": duration, "price": precio_unitario_guardar, "worker": worker,
+            }
+            self.cargar_servicios()
+            self._limpiar_form_servicio()
+            messagebox.showinfo("Éxito", "Servicio pendiente actualizado.")
+        else:
+            _, id_service, id_part_original, precio_original = self.servicio_editando
+            try:
+                conn = conectar(); cursor = conn.cursor()
+                if self.id_part_seleccionado != id_part_original:
+                    cursor.execute("SELECT PartName, Stock FROM Inventory WHERE Id_Part = ?",
+                                   (self.id_part_seleccionado,))
+                    fila = cursor.fetchone()
+                    if not fila:
+                        conn.close()
+                        return messagebox.showwarning("Error", "La refacción ya no existe en inventario.")
+                    part_name, stock_actual = fila
+                    if stock_actual <= 0:
+                        conn.close()
+                        return messagebox.showwarning(
+                            "Sin stock", f"No hay stock disponible de '{part_name}' para hacer este cambio.")
+                    if id_part_original:
+                        cursor.execute("UPDATE Inventory SET Stock = Stock + 1 WHERE Id_Part = ?", (id_part_original,))
+                    cursor.execute("UPDATE Inventory SET Stock = Stock - 1 WHERE Id_Part = ? AND Stock > 0",
+                                   (self.id_part_seleccionado,))
+                cursor.execute("UPDATE Services SET Duration=?, Price=?, Worker=?, Id_Part=? WHERE Id_Service=?",
+                               (duration, precio_unitario_guardar, worker, self.id_part_seleccionado, id_service))
+                diferencia = (precio_unitario_guardar or 0) - (precio_original or 0)
+                cursor.execute("UPDATE Orders SET TotalAmount = TotalAmount + ? WHERE Id_Order = ?",
+                               (diferencia, self.orden_actual))
+                conn.commit(); conn.close()
+                estado.actualizar_datos_precarga()
+                self._refrescar_orden_activa()
+                self.cargar_ordenes()
+                self._limpiar_form_servicio()
+                messagebox.showinfo("Éxito", "Servicio actualizado.")
+            except Exception as e: messagebox.showerror("Error", str(e))
 
     def pedir_ticket_pdf(self):
         if not self.orden_actual:

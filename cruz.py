@@ -1,6 +1,7 @@
 import customtkinter as ctk
 
 import estado
+from conexion import asegurar_esquema
 from estilo import (COLOR_BG_BASE, COLOR_BG_CARD, COLOR_ACCENT, COLOR_TEXT_MAIN,
                      COLOR_TEXT_DIM, BTN_TOP_NAV, configurar_estilo_tablas,
                      configurar_combobox_oscuro, animar_entrada)
@@ -86,6 +87,7 @@ def abrir_menu_principal(ventana_login):
 
 
 def main():
+    asegurar_esquema()
     FrameLogin(on_success=abrir_menu_principal).run()
 
 
